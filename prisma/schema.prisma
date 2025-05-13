@@ -14,31 +14,49 @@ datasource db {
     url      = env("DATABASE_URL")
 }
 
-model Post {
-    id        Int      @id @default(autoincrement())
-    name      String
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
+// Modified User Model for NextAuth and new fields
+model User {
+    // NextAuth original fields
+    id            String    @id @default(cuid())
+    name          String?   // This field is from NextAuth. SQL has FName, LName.
+                          // Consider how you want to manage this: derive from FName/LName, or keep separate.
+    email         String?   @unique
+    emailVerified DateTime?
+    image         String?
+    accounts      Account[]
+    sessions      Session[]
 
-    createdBy   User   @relation(fields: [createdById], references: [id])
-    createdById String
+    // Fields from SQL DDL's Users table, integrated here
+    fName         String    @map("FName")
+    mInit         String?   @map("Minit")
+    lName         String    @map("LName")
+    // passwordHash is for when you use the Credentials provider with NextAuth.
+    // If you only use OAuth, you might not need this stored directly.
+    passwordHash  String    @map("PasswordHash")
+    phoneNumber   String?
 
-    @@index([name])
+    // Relations to new models
+    student         Student?            // One-to-one with Student specific data
+    admin           Admin?              // One-to-one with Admin specific data
+    staff           Staff?              // One-to-one with Staff specific data
+    favoriteRoutes  UserFavoriteRoute[] // Many-to-many for favorite routes
+    // Removed: posts Post[] - This line is removed as Post model is removed
 }
 
-// Necessary for Next auth
+// Necessary for Next auth - These models remain largely unchanged,
+// but their 'user' relation points to the modified User model above.
 model Account {
     id                       String  @id @default(cuid())
     userId                   String
     type                     String
     provider                 String
     providerAccountId        String
-    refresh_token            String? // @db.Text
-    access_token             String? // @db.Text
+    refresh_token            String? @db.Text
+    access_token             String? @db.Text
     expires_at               Int?
     token_type               String?
     scope                    String?
-    id_token                 String? // @db.Text
+    id_token                 String? @db.Text
     session_state            String?
     user                     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
     refresh_token_expires_in Int?
@@ -54,17 +72,6 @@ model Session {
     user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
-model User {
-    id            String    @id @default(cuid())
-    name          String?
-    email         String?   @unique
-    emailVerified DateTime?
-    image         String?
-    accounts      Account[]
-    sessions      Session[]
-    posts         Post[]
-}
-
 model VerificationToken {
     identifier String
     token      String   @unique
@@ -72,3 +79,310 @@ model VerificationToken {
 
     @@unique([identifier, token])
 }
+
+// ---- All new models based on SQL DDL start here ----
+// ---- Note: Foreign Keys to 'Users' in SQL now point to the NextAuth 'User' model's 'id' (String @default(cuid())) ----
+
+// User Subtypes - linking to the main User model
+model Student {
+    userId          String       @id // This IS the User.id from NextAuth User model
+    user            User         @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+    managingAdminId String?      // This refers to an Admin's UserID
+    managingAdmin   Admin?       @relation("AdminManagesStudent", fields: [managingAdminId], references: [userId], onDelete: SetNull, onUpdate: Cascade)
+    digitalCard     DigitalCard?
+    appointments    Appointment[] @relation("StudentAppointments")
+
+    @@map("Students") // Maps to the "Students" table in SQL
+}
+
+model Admin {
+    userId          String    @id // This IS the User.id from NextAuth User model
+    user            User      @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+    managedStudents Student[] @relation("AdminManagesStudent")
+    managedStaff    Staff[]   @relation("AdminManagesStaff")
+
+    @@map("Admins") // Maps to the "Admins" table in SQL
+}
+
+model Staff {
+    userId          String        @id // This IS the User.id from NextAuth User model
+    user            User          @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+    managingAdminId String?       // This refers to an Admin's UserID
+    managingAdmin   Admin?        @relation("AdminManagesStaff", fields: [managingAdminId], references: [userId], onDelete: SetNull, onUpdate: Cascade)
+    menusManaged    Menu[]        @relation("StaffManagesMenu")
+    routesManaged   StaffManagesRoute[]
+    appointmentsManaged Appointment[] @relation("StaffManagesAppointment")
+
+
+    @@map("Staff") // Maps to the "Staff" table in SQL
+}
+
+// Digital Card (1:1 with Student, which links to User)
+model DigitalCard {
+    userId            String              @id // This is Student.userId, which is User.id
+    student           Student             @relation(fields: [userId], references: [userId], onDelete: Cascade, onUpdate: Cascade)
+    balance           Decimal             @default(0.00) @db.Decimal(10, 2) // CHECK (Balance >= 0)
+    cardCreationDate  DateTime            @default(now()) @map("Card_CreationDate")
+    depositTransactions DepositTransaction[]
+    qrCodes           QRCode[]
+
+    @@index([balance])
+    @@map("DigitalCards")
+}
+
+// Deposit Transactions for Digital Cards
+model DepositTransaction {
+    transactionId   String      @id @default(uuid()) @map("TransactionID") // Kept as UUID from SQL
+    userId          String      // This is DigitalCard.userId (-> Student.userId -> User.id)
+    digitalCard     DigitalCard @relation(fields: [userId], references: [userId], onDelete: Cascade, onUpdate: Cascade)
+    amount          Decimal     @db.Decimal(10, 2) // CHECK (Amount > 0)
+    transactionDate DateTime    @default(now())
+
+    @@map("DepositTransactions")
+}
+
+// Routes
+model Route {
+    routeId           String                @id @default(uuid()) @map("RouteID") // Kept as UUID
+    routeName         String                @unique
+    departureTimes    RouteDepartureTime[]
+    userFavorites     UserFavoriteRoute[]   // Links to UserFavoriteRoute -> User
+    staffManages      StaffManagesRoute[]   // Links to StaffManagesRoute -> Staff -> User
+    busDrives         BusDrivesRoute[]
+    routeStations     RouteStation[]
+
+    @@map("Routes")
+}
+
+// Route Departure Times
+model RouteDepartureTime {
+    routeId       String   // Refers to Route.routeId (UUID)
+    route         Route    @relation(fields: [routeId], references: [routeId], onDelete: Cascade, onUpdate: Cascade)
+    departureTime DateTime @db.Time // Store as TIME
+
+    @@id([routeId, departureTime])
+    @@map("Route_Departure_Times")
+}
+
+// Stations
+model Station {
+    stationId         String   @id @default(uuid()) @map("StationID") // Kept as UUID
+    stationName       String
+    stationLatitude   Decimal  @map("Station_Latitude") @db.Decimal(9,6)
+    stationLongitude  Decimal  @map("Station_Longitude") @db.Decimal(9,6)
+    routeStations     RouteStation[]
+
+    @@unique([stationLatitude, stationLongitude], map: "uq_station_location")
+    @@map("Stations")
+}
+
+// Buses
+model Bus {
+    vehicleId      String           @id @map("VehicleID")
+    liveLatitude   Decimal?         @map("Live_Latitude") @db.Decimal(9,6)
+    liveLongitude  Decimal?         @map("Live_Longitude") @db.Decimal(9,6)
+    lastUpdateTime DateTime?
+    busDrivesRoutes  BusDrivesRoute[]
+
+    @@index([lastUpdateTime])
+    @@map("Buses")
+}
+
+// Dishes
+model Dish {
+    dishId    String      @id @default(uuid()) @map("DishID") // Kept as UUID
+    dishName  String      @unique
+    calories  Int?        // CHECK (Calories >= 0)
+    menuDishes MenuDish[]
+
+    @@map("Dishes")
+}
+
+// Menus
+model Menu {
+    menuId           String     @id @default(uuid()) @map("MenuID") // Kept as UUID
+    managedByStaffId String     @map("ManagedBy_StaffID") // This is Staff.userId (-> User.id)
+    managedByStaff   Staff      @relation("StaffManagesMenu", fields: [managedByStaffId], references: [userId], onDelete: Restrict, onUpdate: Cascade)
+    menuDate         DateTime   @db.Date
+    menuOfferingName String
+    price            Decimal    @db.Decimal(10, 2) // CHECK (Price >= 0)
+    qrCodes          QRCode[]
+    sale             Sale?
+    menuDishes       MenuDish[]
+
+    @@unique([menuDate, menuOfferingName], map: "uq_menu_day_offering")
+    @@index([menuDate])
+    @@map("Menus")
+}
+
+// QR Codes
+model QRCode {
+    qrId          String      @id @default(uuid()) @map("QR_ID") // Kept as UUID
+    userId        String      // This is DigitalCard.userId (-> Student.userId -> User.id)
+    digitalCard   DigitalCard @relation(fields: [userId], references: [userId], onDelete: Cascade, onUpdate: Cascade)
+    menuId        String?     // Refers to Menu.menuId (UUID)
+    menu          Menu?       @relation(fields: [menuId], references: [menuId], onDelete: SetNull, onUpdate: Cascade)
+    createDate    DateTime    @default(now()) @map("Create_Date")
+    expiredDate   DateTime    @map("Expired_Date")
+    remainingTime String?     // SQL 'INTERVAL' - represent as String or Int (seconds)
+
+    @@index([userId])
+    @@map("QRCodes")
+}
+
+// Sales
+model Sale {
+    menuId   String @id      // This is Menu.menuId (UUID), PK and FK
+    menu     Menu   @relation(fields: [menuId], references: [menuId], onDelete: Cascade, onUpdate: Cascade)
+    numSold  Int    @default(0) @map("Num_Sold") // CHECK (Num_Sold >= 0)
+
+    @@map("Sales")
+}
+
+// Books
+model Book {
+    isbn            String                     @id @map("ISBN")
+    title           String
+    author          String?
+    quantityInStock Int                        // CHECK (QuantityInStock >= 0)
+    currentQuantity Int                        // CHECK (CurrentQuantity >= 0 AND CurrentQuantity <= QuantityInStock)
+    borrowRecords   BookAppointmentBorrowsBook[]
+
+    @@index([currentQuantity])
+    @@map("Books")
+}
+
+// Appointments (Supertype)
+model Appointment {
+    appointmentId     String            @id @default(uuid()) @map("AppointmentID") // Kept as UUID
+    takenByStudentId  String            @map("TakenBy_StudentID") // This is Student.userId (-> User.id)
+    takenByStudent    Student           @relation("StudentAppointments", fields: [takenByStudentId], references: [userId], onDelete: Cascade, onUpdate: Cascade)
+    managedByStaffId  String            @map("ManagedBy_StaffID") // This is Staff.userId (-> User.id)
+    managedByStaff    Staff             @relation("StaffManagesAppointment", fields: [managedByStaffId], references: [userId], onDelete: Restrict, onUpdate: Cascade)
+    appointmentDate   DateTime          @db.Date
+    appointmentStatus AppointmentStatus @default(Scheduled) // ENUM
+    bookAppointment   BookAppointment?
+    sportAppointment  SportAppointment?
+    healthAppointment HealthAppointment?
+
+    @@index([takenByStudentId, appointmentDate])
+    @@index([managedByStaffId, appointmentDate])
+    @@map("Appointments")
+}
+
+// Appointment Subtypes
+model BookAppointment {
+    appointmentId String      @id // This is Appointment.appointmentId (UUID)
+    appointment   Appointment @relation(fields: [appointmentId], references: [appointmentId], onDelete: Cascade, onUpdate: Cascade)
+    borrowDate    DateTime    @db.Date
+    returnDate    DateTime?   @db.Date   // CHECK (ReturnDate IS NULL OR ReturnDate >= BorrowDate)
+    borrowedBooks BookAppointmentBorrowsBook[]
+
+    @@map("BookAppointments")
+}
+
+model SportAppointment {
+    appointmentId String      @id // This is Appointment.appointmentId (UUID)
+    appointment   Appointment @relation(fields: [appointmentId], references: [appointmentId], onDelete: Cascade, onUpdate: Cascade)
+    sportType     String      @map("Sport_Type")
+    startTime     DateTime    @db.Time
+    endTime       DateTime    @db.Time   // CHECK (EndTime > StartTime)
+
+    @@map("SportAppointments")
+}
+
+model HealthAppointment {
+    appointmentId String      @id // This is Appointment.appointmentId (UUID)
+    appointment   Appointment @relation(fields: [appointmentId], references: [appointmentId], onDelete: Cascade, onUpdate: Cascade)
+    healthType    String      @map("Health_Type")
+    startTime     DateTime    @db.Time
+    endTime       DateTime    @db.Time   // CHECK (EndTime > StartTime)
+
+    @@map("HealthAppointments")
+}
+
+// M:N Relationship Tables & Multi-valued Attribute Tables
+
+// Links User (NextAuth) to Route
+model UserFavoriteRoute {
+    userId  String // This is User.id (cuid)
+    user    User   @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+    routeId String // This is Route.routeId (UUID)
+    route   Route  @relation(fields: [routeId], references: [routeId], onDelete: Cascade, onUpdate: Cascade)
+
+    @@id([userId, routeId])
+    @@map("User_Favorite_Routes")
+}
+
+// Links Staff (-> User) to Route
+model StaffManagesRoute {
+    staffId String // This is Staff.userId (-> User.id - cuid)
+    staff   Staff  @relation(fields: [staffId], references: [userId], onDelete: Cascade, onUpdate: Cascade)
+    routeId String // This is Route.routeId (UUID)
+    route   Route  @relation(fields: [routeId], references: [routeId], onDelete: Cascade, onUpdate: Cascade)
+
+    @@id([staffId, routeId])
+    @@map("Staff_Manages_Routes")
+}
+
+model BusDrivesRoute {
+    vehicleId           String   // Bus.vehicleId
+    bus                 Bus      @relation(fields: [vehicleId], references: [vehicleId], onDelete: Cascade, onUpdate: Cascade)
+    routeId             String   // Route.routeId (UUID)
+    route               Route    @relation(fields: [routeId], references: [routeId], onDelete: Cascade, onUpdate: Cascade)
+    driveTimestamp      DateTime @default(now())
+    estimatedArrivalTime DateTime?
+
+    @@id([vehicleId, routeId, driveTimestamp])
+    @@index([routeId, driveTimestamp(sort: Desc)])
+    @@map("Bus_Drives_Routes")
+}
+
+model RouteStation {
+    routeId   String  // Route.routeId (UUID)
+    route     Route   @relation(fields: [routeId], references: [routeId], onDelete: Cascade, onUpdate: Cascade)
+    stationId String  // Station.stationId (UUID)
+    station   Station @relation(fields: [stationId], references: [stationId], onDelete: Cascade, onUpdate: Cascade)
+    stopOrder Int     // CHECK (StopOrder > 0)
+
+    @@id([routeId, stationId])
+    @@unique([routeId, stopOrder])
+    @@map("Route_Stations")
+}
+
+model MenuDish {
+    menuId String // Menu.menuId (UUID)
+    menu   Menu   @relation(fields: [menuId], references: [menuId], onDelete: Cascade, onUpdate: Cascade)
+    dishId String // Dish.dishId (UUID)
+    dish   Dish   @relation(fields: [dishId], references: [dishId], onDelete: Cascade, onUpdate: Cascade)
+
+    @@id([menuId, dishId])
+    @@map("Menu_Dishes")
+}
+
+model BookAppointmentBorrowsBook {
+    appointmentId   String          // BookAppointment.appointmentId (-> Appointment.appointmentId - UUID)
+    bookAppointment BookAppointment @relation(fields: [appointmentId], references: [appointmentId], onDelete: Cascade, onUpdate: Cascade)
+    isbn            String          @map("ISBN") // Book.isbn
+    book            Book            @relation(fields: [isbn], references: [isbn], onDelete: Restrict, onUpdate: Cascade)
+
+    @@id([appointmentId, isbn])
+    @@map("BookAppointment_Borrows_Book")
+}
+
+// ENUMs
+enum AppointmentStatus {
+    Scheduled
+    Completed
+    Cancelled
+    NoShow
+}
+
+// Note on Views (v_Daily_Revenue):
+// Prisma does not create/manage database views. Create this with a raw SQL migration.
+// CREATE VIEW "v_Daily_Revenue" AS
+// SELECT s."MenuID", m."MenuOfferingName", m."MenuDate", m."Price", s."Num_Sold", (s."Num_Sold" * m."Price") AS "Daily_Revenue"
+// FROM   "Sales" s JOIN "Menus" m USING ("MenuID");
