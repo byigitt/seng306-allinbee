@@ -23,7 +23,7 @@ import {
 	TableRow,
 } from "@/components/ui/table";
 import Link from "next/link";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { api } from "@/trpc/react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AlertTriangle, Info } from "lucide-react";
@@ -35,6 +35,7 @@ export default function EtasPage() {
 	const [selectedRouteId, setSelectedRouteId] = useState<string | undefined>(undefined);
 	const [selectedStationId, setSelectedStationId] = useState<string | undefined>(undefined);
 	const [shouldFetchEtas, setShouldFetchEtas] = useState<boolean>(false);
+	const prevSelectedRouteIdRef = useRef<string | undefined>(undefined);
 
 	const { 
 		data: routesData, 
@@ -49,7 +50,7 @@ export default function EtasPage() {
 		error: errorRouteDetails,
 		isError: isErrorRouteDetails,
 	} = api.ringTracking.getRoute.useQuery(
-		{ routeId: selectedRouteId! }, 
+		{ routeId: selectedRouteId ?? "" }, 
 		{ enabled: !!selectedRouteId }
 	);
 
@@ -62,8 +63,10 @@ export default function EtasPage() {
 		isError: isErrorEtas,
 		refetch: refetchEtas 
 	} = api.ringTracking.getStationETAs.useQuery(
-		{ stationId: selectedStationId!, routeId: selectedRouteId! }, 
-		{ enabled: shouldFetchEtas && !!selectedStationId && !!selectedRouteId }
+		{ stationId: selectedStationId ?? "", routeId: selectedRouteId ?? "" }, 
+		{ 
+			enabled: shouldFetchEtas && !!selectedStationId && !!selectedRouteId
+		}
 	);
 
 	useEffect(() => {
@@ -92,8 +95,11 @@ export default function EtasPage() {
 
 	useEffect(() => {
 		// When route changes, reset station and ETA fetching trigger
-		setSelectedStationId(undefined);
-		setShouldFetchEtas(false);
+		if (selectedRouteId !== prevSelectedRouteIdRef.current) {
+			setSelectedStationId(undefined);
+			setShouldFetchEtas(false);
+		}
+		prevSelectedRouteIdRef.current = selectedRouteId;
 	}, [selectedRouteId]);
 
 	useEffect(() => {
@@ -135,17 +141,17 @@ export default function EtasPage() {
 							{errorRoutes && <p className="text-sm text-destructive">Failed to load routes.</p>}
 							{!isLoadingRoutes && !errorRoutes && (
 								<Select value={selectedRouteId} onValueChange={setSelectedRouteId} disabled={isLoadingRoutes}>
-									<SelectTrigger id="route-select">
-										<SelectValue placeholder="Select a bus route" />
-									</SelectTrigger>
-									<SelectContent>
+								<SelectTrigger id="route-select">
+									<SelectValue placeholder="Select a bus route" />
+								</SelectTrigger>
+								<SelectContent>
 										{routesData?.routes.map((route) => (
 											<SelectItem key={route.routeId} value={route.routeId}>
 												{route.routeName}
-											</SelectItem>
-										))}
-									</SelectContent>
-								</Select>
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
 							)}
 						</div>
 						<div>
@@ -154,18 +160,28 @@ export default function EtasPage() {
 							{!selectedRouteId && !isLoadingRoutes && <p className="text-sm text-muted-foreground p-2 border rounded-md h-10 flex items-center">Select a route first</p>}
 							{selectedRouteId && !isLoadingRouteDetails && stationsForSelectedRoute.length === 0 && <p className="text-sm text-muted-foreground p-2 border rounded-md h-10 flex items-center">No stations for this route.</p>}
 							{selectedRouteId && !isLoadingRouteDetails && stationsForSelectedRoute.length > 0 && (
-								<Select value={selectedStationId} onValueChange={setSelectedStationId} disabled={!selectedRouteId || isLoadingRouteDetails}>
-									<SelectTrigger id="station-select">
-										<SelectValue placeholder="Select a station" />
-									</SelectTrigger>
-									<SelectContent>
-										{stationsForSelectedRoute.map((station) => (
-											<SelectItem key={station.stationId} value={station.stationId}>
-												{station.stationName}
-											</SelectItem>
-										))}
-									</SelectContent>
-								</Select>
+								<Select 
+									value={selectedStationId} 
+									onValueChange={(value) => {
+										console.log("[ETAs Page] Station selected:", value);
+										setSelectedStationId(value);
+									}}
+									disabled={!selectedRouteId || isLoadingRouteDetails}
+								>
+								<SelectTrigger id="station-select">
+									<SelectValue placeholder="Select a station" />
+								</SelectTrigger>
+								<SelectContent>
+										{stationsForSelectedRoute.map((station) => {
+											console.log("[ETAs Page] Station in dropdown:", station);
+											return (
+												<SelectItem key={station.stationId} value={station.stationId}>
+													{station.stationName}
+												</SelectItem>
+											);
+										})}
+								</SelectContent>
+							</Select>
 							)}
 						</div>
 					</div>
@@ -181,9 +197,9 @@ export default function EtasPage() {
 						Estimated Arrival Times
 					</CardTitle>
 					{(selectedStationId && selectedRouteDetails) ? 
-						<CardDescription className="text-sm">
+					<CardDescription className="text-sm">
 							Showing ETAs for <strong>{stationsForSelectedRoute.find(s => s.stationId === selectedStationId)?.stationName}</strong> on route <strong>{selectedRouteDetails.routeName}</strong>.
-						</CardDescription> 
+					</CardDescription>
 						: 
 						<CardDescription className="text-sm">Select a route and station to view ETAs.</CardDescription>
 					}
@@ -209,57 +225,57 @@ export default function EtasPage() {
 					)}
 					{!isLoadingEtas && !errorEtas && displayedEtas.length > 0 && (
 					<>
-						{/* Desktop Table */}
-						<div className="hidden overflow-x-auto md:block">
-							<Table>
-								<TableHeader>
-									<TableRow>
-										<TableHead>Route</TableHead>
+					{/* Desktop Table */}
+					<div className="hidden overflow-x-auto md:block">
+						<Table>
+							<TableHeader>
+								<TableRow>
+									<TableHead>Route</TableHead>
 										<TableHead>Bus ID</TableHead>
-										<TableHead className="text-right">ETA</TableHead>
-									</TableRow>
-								</TableHeader>
-								<TableBody>
+									<TableHead className="text-right">ETA</TableHead>
+								</TableRow>
+							</TableHeader>
+							<TableBody>
 									{displayedEtas.map((eta) => (
-										<TableRow
-											key={eta.busId}
-											className="transition-colors even:bg-muted/40 hover:bg-accent/40"
-										>
-											<TableCell className="font-medium">
+									<TableRow
+										key={eta.busId}
+										className="transition-colors even:bg-muted/40 hover:bg-accent/40"
+									>
+										<TableCell className="font-medium">
 												{eta.currentRouteName}
-											</TableCell>
+										</TableCell>
 											<TableCell>{eta.busId}</TableCell>
-											<TableCell className="text-right">
-												<span className="inline-block rounded bg-green-600/80 px-2 py-1 font-bold text-white text-xs">
+										<TableCell className="text-right">
+											<span className="inline-block rounded bg-green-600/80 px-2 py-1 font-bold text-white text-xs">
 													{eta.etaMinutes} min
-												</span>
-											</TableCell>
-										</TableRow>
-									))}
-								</TableBody>
-							</Table>
-						</div>
-						{/* Mobile List */}
-						<div className="flex flex-col gap-3 md:hidden">
+											</span>
+										</TableCell>
+									</TableRow>
+								))}
+							</TableBody>
+						</Table>
+					</div>
+					{/* Mobile List */}
+					<div className="flex flex-col gap-3 md:hidden">
 							{displayedEtas.map((eta) => (
-								<div
-									key={eta.busId}
-									className="flex items-center justify-between rounded-lg bg-muted/40 px-4 py-3 shadow-sm"
-								>
-									<div className="flex flex-col">
-										<span className="font-semibold text-foreground text-sm">
+							<div
+								key={eta.busId}
+								className="flex items-center justify-between rounded-lg bg-muted/40 px-4 py-3 shadow-sm"
+							>
+								<div className="flex flex-col">
+									<span className="font-semibold text-foreground text-sm">
 											{eta.currentRouteName}
-										</span>
-										<span className="text-muted-foreground text-xs">
+									</span>
+									<span className="text-muted-foreground text-xs">
 											Bus ID: {eta.busId}
-										</span>
-									</div>
-									<span className="ml-4 inline-block rounded bg-green-600/80 px-3 py-1 font-bold text-sm text-white">
-										{eta.etaMinutes} min
 									</span>
 								</div>
-							))}
-						</div>
+								<span className="ml-4 inline-block rounded bg-green-600/80 px-3 py-1 font-bold text-sm text-white">
+										{eta.etaMinutes} min
+								</span>
+							</div>
+						))}
+					</div>
 					</>
 					)}
 				</CardContent>

@@ -69,7 +69,7 @@ export default function FavoriteRoutesPage() {
 		onSuccess: (data) => {
 			toast.success(`Route "${data.route.routeName}" added to favorites!`);
 			utils.ringTracking.listFavoriteRoutes.invalidate();
-			setSelectedRouteToAdd("");
+				setSelectedRouteToAdd("");
 		},
 		onError: (error) => {
 			toast.error(error.message || "Failed to add favorite route.");
@@ -124,27 +124,27 @@ export default function FavoriteRoutesPage() {
 						{isLoadingAllRoutes && <Skeleton className="h-10 w-full" />}
 						{errorAllRoutes && <p className="text-sm text-destructive">Failed to load routes.</p>}
 						{!isLoadingAllRoutes && !errorAllRoutes && (
-							<Select
-								value={selectedRouteToAdd}
-								onValueChange={setSelectedRouteToAdd}
+						<Select
+							value={selectedRouteToAdd}
+							onValueChange={setSelectedRouteToAdd}
 								disabled={addFavoriteMutation.isPending}
-							>
-								<SelectTrigger id="route-select">
-									<SelectValue placeholder="Choose a route to add" />
-								</SelectTrigger>
-								<SelectContent>
+						>
+							<SelectTrigger id="route-select">
+								<SelectValue placeholder="Choose a route to add" />
+							</SelectTrigger>
+							<SelectContent>
 									{availableRoutesToAdd.map((route) => (
 										<SelectItem key={route.routeId} value={route.routeId}>
 											{route.routeName}
 										</SelectItem>
 									))}
 									{availableRoutesToAdd.length === 0 && !isLoadingAllRoutes && (
-										<p className="p-2 text-muted-foreground text-sm">
+									<p className="p-2 text-muted-foreground text-sm">
 											All routes added or none available.
-										</p>
-									)}
-								</SelectContent>
-							</Select>
+									</p>
+								)}
+							</SelectContent>
+						</Select>
 						)}
 					</div>
 					<Button onClick={handleAddFavorite} disabled={!selectedRouteToAdd || addFavoriteMutation.isPending || isLoadingAllRoutes}>
