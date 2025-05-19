@@ -28,11 +28,12 @@ export default function PageHeader({ title }: PageHeaderProps) {
 					<SheetTitle className="sr-only">Main Menu</SheetTitle>
 					<div className="flex items-center justify-between border-b px-4 py-4">
 						<Link
-							href="#"
-							className="flex items-center gap-2 rounded-full bg-primary px-3 py-2 font-bold text-lg text-primary-foreground shadow"
+							href="/"
+							className="flex items-center gap-2 rounded-full bg-primary px-3 py-2 text-primary-foreground shadow"
 						>
-							AIB
-							<span className="sr-only">AllInBee</span>
+							<Image src="/logo.png" alt="AllInBee Logo" width={28} height={28} className="h-7 w-7 object-contain" />
+							<span className="font-bold text-lg">AllInBee</span>
+							<span className="sr-only">AllInBee Home</span>
 						</Link>
 						<SheetClose asChild>
 							<Button size="icon" variant="ghost" className="rounded-full">
