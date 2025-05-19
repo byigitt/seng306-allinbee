@@ -94,52 +94,52 @@ export default function TransactionHistoryPage() {
                         </div>
                     )}
 					{!isLoading && !error && transactions.length > 0 && (
-						<Table>
-							<TableHeader>
-								<TableRow>
-									<TableHead>Date</TableHead>
-									<TableHead>Type</TableHead>
-									<TableHead>Description</TableHead>
-									<TableHead className="text-right">Amount</TableHead>
-									<TableHead className="text-center">Status</TableHead>
-								</TableRow>
-							</TableHeader>
-							<TableBody>
+					<Table>
+						<TableHeader>
+							<TableRow>
+								<TableHead>Date</TableHead>
+								<TableHead>Type</TableHead>
+								<TableHead>Description</TableHead>
+								<TableHead className="text-right">Amount</TableHead>
+								<TableHead className="text-center">Status</TableHead>
+							</TableRow>
+						</TableHeader>
+						<TableBody>
 								{transactions.map((txn) => (
-									<TableRow key={txn.id}>
-										<TableCell>
-											{new Date(txn.date).toLocaleDateString("en-CA")}
-										</TableCell>
-										<TableCell>
-											<Badge
-												variant={txn.type === "Deposit" ? "default" : "secondary"}
-											>
-												{txn.type}
-											</Badge>
-										</TableCell>
-										<TableCell>{txn.description}</TableCell>
-										<TableCell
-											className={`text-right font-medium ${txn.amount.startsWith("+") || txn.amount === "- Amount N/A" ? "text-muted-foreground" : "text-red-600"}`}
+								<TableRow key={txn.id}>
+									<TableCell>
+										{new Date(txn.date).toLocaleDateString("en-CA")}
+									</TableCell>
+									<TableCell>
+										<Badge
+											variant={txn.type === "Deposit" ? "default" : "secondary"}
 										>
-											{txn.amount}
-										</TableCell>
-										<TableCell className="text-center">
-											<Badge
-												variant={
-													txn.status === "Completed"
-														? "default"
-														: txn.status === "Pending"
-															? "secondary"
-															: "destructive"
-												}
-											>
-												{txn.status}
-											</Badge>
-										</TableCell>
-									</TableRow>
-								))}
-							</TableBody>
-						</Table>
+											{txn.type}
+										</Badge>
+									</TableCell>
+									<TableCell>{txn.description}</TableCell>
+									<TableCell
+											className={`text-right font-medium ${txn.amount.startsWith("+") || txn.amount === "- Amount N/A" ? "text-muted-foreground" : "text-red-600"}`}
+									>
+										{txn.amount}
+									</TableCell>
+									<TableCell className="text-center">
+										<Badge
+											variant={
+												txn.status === "Completed"
+													? "default"
+													: txn.status === "Pending"
+														? "secondary"
+														: "destructive"
+											}
+										>
+											{txn.status}
+										</Badge>
+									</TableCell>
+								</TableRow>
+							))}
+						</TableBody>
+					</Table>
 					)}
 				</CardContent>
 			</Card>

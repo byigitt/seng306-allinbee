@@ -128,20 +128,20 @@ export default function AddFundsPage() {
 						<Skeleton className="h-4 w-36" />
 					)}
 					{digitalCard && (
-						<CardDescription>
+					<CardDescription>
 							Your current balance: {parseFloat(digitalCard.balance as unknown as string).toFixed(2)} TL
 						</CardDescription>
 					)}
 					{balanceError && (
 						<CardDescription className="text-destructive">
 							Could not load balance: {balanceError.message}
-						</CardDescription>
+					</CardDescription>
 					)}
 				</CardHeader>
 				<CardContent>
 					<form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-						<div className="grid gap-2">
-							<Label htmlFor="amount">Amount (TL)</Label>
+					<div className="grid gap-2">
+						<Label htmlFor="amount">Amount (TL)</Label>
 							<Controller
 								name="selectedAmount"
 								control={control}
@@ -151,22 +151,22 @@ export default function AddFundsPage() {
                                         defaultValue={field.value}
                                         disabled={!!watchedCustomAmount || isSubmitting}
                                     >
-										<SelectTrigger id="amount">
-											<SelectValue placeholder="Select amount" />
-										</SelectTrigger>
-										<SelectContent>
-											<SelectItem value="10">10 TL</SelectItem>
-											<SelectItem value="20">20 TL</SelectItem>
-											<SelectItem value="50">50 TL</SelectItem>
-											<SelectItem value="100">100 TL</SelectItem>
-										</SelectContent>
-									</Select>
+							<SelectTrigger id="amount">
+								<SelectValue placeholder="Select amount" />
+							</SelectTrigger>
+							<SelectContent>
+								<SelectItem value="10">10 TL</SelectItem>
+								<SelectItem value="20">20 TL</SelectItem>
+								<SelectItem value="50">50 TL</SelectItem>
+								<SelectItem value="100">100 TL</SelectItem>
+							</SelectContent>
+						</Select>
 								)}
 							/>
                             {errors.selectedAmount && <p className="text-xs text-destructive">{errors.selectedAmount.message}</p>}
-						</div>
-						<div className="grid gap-2">
-							<Label htmlFor="custom-amount">Or Enter Custom Amount (TL)</Label>
+					</div>
+					<div className="grid gap-2">
+						<Label htmlFor="custom-amount">Or Enter Custom Amount (TL)</Label>
 							<Controller
 								name="customAmount"
 								control={control}
@@ -183,14 +183,14 @@ export default function AddFundsPage() {
 								)}
 							/>
                             {errors.customAmount && <p className="text-xs text-destructive">{errors.customAmount.message}</p>}
-						</div>
-						<Button
+					</div>
+					<Button
 							type="submit"
-							className="w-full"
+						className="w-full"
 							disabled={recordDepositMutation.isPending || isLoadingBalance || isSubmitting}
-						>
+					>
 							{recordDepositMutation.isPending || isSubmitting ? "Processing..." : "Proceed to Payment"}
-						</Button>
+					</Button>
 					</form>
 				</CardContent>
 			</Card>

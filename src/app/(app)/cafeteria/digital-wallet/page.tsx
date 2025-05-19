@@ -62,9 +62,9 @@ export default function DigitalWalletPage() {
 						<Skeleton className="h-12 w-48" />
 					)}
 					{digitalCard && (
-						<p className="font-bold text-4xl text-primary">
+					<p className="font-bold text-4xl text-primary">
 							{parseFloat(digitalCard.balance as unknown as string).toFixed(2)} TL
-						</p>
+					</p>
 					)}
 					{error && (
 						<div className="flex items-center text-destructive">

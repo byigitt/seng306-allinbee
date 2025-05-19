@@ -17,7 +17,7 @@ export default function CafeteriaMenuPage() {
     // Add any default filters if needed, e.g., for "today's menus" if backend supported it
     // For now, fetching all menus with default pagination (take 10)
     // You might want to increase `take` for a "daily menu" page or implement proper pagination.
-    take: 50, // Example: fetch up to 50 menus for the daily view
+    limit: 50, // Example: fetch up to 50 menus for the daily view
   });
 
 	if (isLoading) {

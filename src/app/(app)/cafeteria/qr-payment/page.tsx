@@ -105,9 +105,9 @@ export default function QrPaymentPage() {
 				</CardContent>
 			</Card>
 			{qrData && (
-				<p className="text-center text-muted-foreground text-sm">
+			<p className="text-center text-muted-foreground text-sm">
 					Note: This QR code will expire. (Actual expiry: {generateQrCodeMutation.data?.expiredDate ? new Date(generateQrCodeMutation.data.expiredDate).toLocaleString() : 'N/A'})
-				</p>
+			</p>
 			)}
 
 			<Button variant="link" asChild className="mt-4">
