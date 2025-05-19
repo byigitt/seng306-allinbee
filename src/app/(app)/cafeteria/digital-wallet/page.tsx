@@ -1,3 +1,5 @@
+"use client";
+
 import { Button } from "@/components/ui/button";
 import {
 	Card,
@@ -6,16 +8,29 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
-import { ListChecks, PlusCircle } from "lucide-react";
+import { ListChecks, PlusCircle, AlertTriangle } from "lucide-react";
 import Link from "next/link";
-
-// Mock data - replace with API call
-const mockWallet = {
-	balance: "125.50 TL",
-	userName: "Ada Lovelace",
-};
+import { api } from "@/trpc/react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useEffect } from "react";
+import { toast } from "sonner";
 
 export default function DigitalWalletPage() {
+	const {
+		data: digitalCard,
+		isLoading,
+		error,
+		isError,
+	} = api.cafeteria.getMyDigitalCard.useQuery();
+
+	useEffect(() => {
+		if (isError && error) {
+			toast.error("Wallet Error", {
+				description: error.message || "Could not load your wallet details.",
+			});
+		}
+	}, [isError, error]);
+
 	return (
 		<div className="space-y-6">
 			<div>
@@ -28,19 +43,47 @@ export default function DigitalWalletPage() {
 			<Card className="w-full max-w-md">
 				<CardHeader>
 					<CardTitle>Current Balance</CardTitle>
-					<CardDescription>{mockWallet.userName}</CardDescription>
+					{isLoading && <Skeleton className="h-4 w-32" />}
+					{digitalCard && (
+						<CardDescription>
+							{digitalCard.student?.user?.name ??
+								digitalCard.student?.user?.email ??
+								"Your Wallet"}
+						</CardDescription>
+					)}
+					{error && (
+						<CardDescription className="text-destructive">
+							Could not load wallet details.
+						</CardDescription>
+					)}
 				</CardHeader>
 				<CardContent className="space-y-4">
-					<p className="font-bold text-4xl text-primary">
-						{mockWallet.balance}
-					</p>
+					{isLoading && (
+						<Skeleton className="h-12 w-48" />
+					)}
+					{digitalCard && (
+						<p className="font-bold text-4xl text-primary">
+							{parseFloat(digitalCard.balance as unknown as string).toFixed(2)} TL
+						</p>
+					)}
+					{error && (
+						<div className="flex items-center text-destructive">
+							<AlertTriangle className="mr-2 h-6 w-6" />
+							<p>Error: {error.message}</p>
+						</div>
+					)}
 					<div className="flex gap-4">
-						<Button asChild className="flex-1">
+						<Button asChild className="flex-1" disabled={isLoading || !!error}>
 							<Link href="/cafeteria/add-funds">
 								<PlusCircle className="mr-2 h-4 w-4" /> Add Funds
 							</Link>
 						</Button>
-						<Button variant="outline" asChild className="flex-1">
+						<Button
+							variant="outline"
+							asChild
+							className="flex-1"
+							disabled={isLoading || !!error}
+						>
 							<Link href="/cafeteria/transactions">
 								<ListChecks className="mr-2 h-4 w-4" /> View Transactions
 							</Link>
