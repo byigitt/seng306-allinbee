@@ -38,14 +38,14 @@ const adminDashboardCards = [
 export default function AdminDashboardPage() {
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col items-start gap-2 md:flex-row md:items-center md:justify-between">
         <div>
-            <h1 className="text-3xl font-bold">Admin Dashboard</h1>
+            <h1 className="text-2xl md:text-3xl font-bold">Admin Dashboard</h1>
             <p className="text-muted-foreground">Overview and quick access to management panels.</p>
         </div>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-6 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3 mb-[80px]">
         {adminDashboardCards.map((card) => (
           <Link href={card.href} key={card.title} className="block hover:shadow-lg transition-shadow rounded-lg">
             <Card className="h-full flex flex-col">
