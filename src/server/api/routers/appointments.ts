@@ -5,7 +5,12 @@ import {
   adminProcedure,
   staffProcedure,
 } from "@/server/api/trpc";
-import type { Prisma, Appointment, BookBorrowRecord } from "@prisma/client";
+import type {
+  Prisma,
+  Appointment,
+  BookBorrowRecord,
+  Staff,
+} from "@prisma/client";
 
 // Enum for AppointmentStatus based on Prisma schema
 const appointmentStatusSchema = z.enum([
@@ -24,28 +29,143 @@ const bookDetailSchema = z.object({
 });
 
 export const appointmentsRouter = createTRPCRouter({
+  getAvailableSlots: protectedProcedure
+    .input(
+      z.object({
+        serviceId: z.string(),
+        date: z.string().datetime(), // ISO string from client
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const { date: selectedDateISO } = input;
+      const selectedDate = new Date(selectedDateISO);
+
+      // Define operating hours (e.g., 9 AM to 5 PM)
+      const openingHour = 9;
+      const closingHour = 17; // 5 PM
+      const slotDurationMinutes = 60;
+
+      const allPossibleSlots: string[] = [];
+      for (let hour = openingHour; hour < closingHour; hour++) {
+        const slotDate = new Date(selectedDate);
+        slotDate.setHours(hour, 0, 0, 0);
+
+        // Format to HH:MM AM/PM
+        let h = slotDate.getHours();
+        const m = slotDate.getMinutes();
+        const ampm = h >= 12 ? "PM" : "AM";
+        h = h % 12;
+        h = h ? h : 12; // Handle midnight (0 hours) as 12 AM
+        const minutesStr = m < 10 ? "0" + m : m;
+        allPossibleSlots.push(`${h}:${minutesStr} ${ampm}`);
+      }
+
+      // Fetch existing appointments for the selected day
+      // This is a simplified query. A real system would filter by specific staff/resource if applicable.
+      const dayStart = new Date(selectedDate);
+      dayStart.setHours(0, 0, 0, 0);
+      const dayEnd = new Date(selectedDate);
+      dayEnd.setHours(23, 59, 59, 999);
+
+      const existingAppointments = await ctx.db.appointment.findMany({
+        where: {
+          appointmentDate: {
+            gte: dayStart,
+            lte: dayEnd,
+          },
+          // Add more filters if needed, e.g., for a specific staff member or resource related to serviceId
+          // appointmentStatus: { notIn: ["Cancelled", "NoShow"] } // Only consider active bookings
+        },
+        include: {
+          // Include sport/health to get their specific start times
+          sportAppointment: true,
+          healthAppointment: true,
+        },
+      });
+
+      const bookedTimeSlots = new Set<string>();
+      existingAppointments.forEach((appt) => {
+        let apptStartTime: Date | null = null;
+        if (appt.sportAppointment?.startTime) {
+          // Sport/Health appointments store time separately. We need to combine with appointmentDate.
+          const baseDate = new Date(appt.appointmentDate); // Use the date part from the main appointment
+          const time = new Date(appt.sportAppointment.startTime); // This date part is 1970-01-01
+          baseDate.setHours(time.getUTCHours(), time.getUTCMinutes(), 0, 0);
+          apptStartTime = baseDate;
+        } else if (appt.healthAppointment?.startTime) {
+          const baseDate = new Date(appt.appointmentDate);
+          const time = new Date(appt.healthAppointment.startTime);
+          baseDate.setHours(time.getUTCHours(), time.getUTCMinutes(), 0, 0);
+          apptStartTime = baseDate;
+        }
+        // For other appointment types or if specific times aren't on subtypes,
+        // you might need a default assumption or a 'slotTime' field on the Appointment model.
+        // For now, we'll only consider Sport/Health start times if present.
+
+        if (apptStartTime) {
+          let h = apptStartTime.getHours();
+          const m = apptStartTime.getMinutes();
+          const ampm = h >= 12 ? "PM" : "AM";
+          h = h % 12;
+          h = h ? h : 12;
+          const minutesStr = m < 10 ? "0" + m : m;
+          bookedTimeSlots.add(`${h}:${minutesStr} ${ampm}`);
+        }
+      });
+
+      const availableSlots = allPossibleSlots.filter(
+        (slot) => !bookedTimeSlots.has(slot)
+      );
+
+      // console.log(`Selected Date: ${selectedDate.toDateString()}`);
+      // console.log("All possible slots for the day:", allPossibleSlots);
+      // console.log("Booked time slots (from Sport/Health):", Array.from(bookedTimeSlots));
+      // console.log("Calculated available slots:", availableSlots);
+
+      return availableSlots;
+    }),
+
   // --- Appointment Management --- (Section 3.5.1 PRD)
   createAppointment: protectedProcedure // Student role typically, staff might also book for users
     .input(
       z.object({
         appointmentType: appointmentTypeSchema, // Make this required
         appointmentDate: z.string().datetime(),
-        managedByStaffId: z.string().cuid(),
+        managedByStaffId: z.string().cuid().optional(), // Made optional
         bookDetails: z.array(bookDetailSchema).optional(), // For Book appointments
         sportType: z.string().min(1).optional(),
         healthType: z.string().min(1).optional(),
         startTime: z
           .string()
-          .regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/)
-          .optional(), // HH:MM
+          // Regex to match HH:MM format, also allowing single digit hour
+          .regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, {
+            message: "Invalid time format, expected HH:MM",
+          })
+          .optional(),
         endTime: z
           .string()
-          .regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/)
-          .optional(), // HH:MM
+          .regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, {
+            message: "Invalid time format, expected HH:MM",
+          })
+          .optional(),
+        notes: z.string().optional(), // Added notes field to input schema
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const studentId = ctx.session.user.id;
+      const sessionUserId = ctx.session.user.id;
+      console.log(`Creating appointment for session user ID: ${sessionUserId}`);
+
+      // Verify the session user is a valid student
+      const studentProfile = await ctx.db.student.findUnique({
+        where: { userId: sessionUserId },
+      });
+      if (!studentProfile) {
+        console.error(`No student profile found for user ID: ${sessionUserId}`);
+        throw new Error(
+          `Your user profile is not configured as a student. Please contact support.`
+        );
+      }
+      const studentIdToAssign = studentProfile.userId; // Use the verified student ID
 
       if (
         input.appointmentType === "Book" &&
@@ -69,13 +189,55 @@ export const appointmentsRouter = createTRPCRouter({
         throw new Error("Health type is required for health appointments.");
       }
 
+      let staffUserIdToAssign = input.managedByStaffId;
+      if (!staffUserIdToAssign) {
+        console.log(
+          "managedByStaffId not provided, attempting to auto-assign."
+        );
+        const firstStaffProfile = await ctx.db.staff.findFirst({
+          include: { user: { select: { id: true } } }, // Ensure user relation is valid
+        });
+        if (!firstStaffProfile || !firstStaffProfile.user) {
+          console.error(
+            "No staff available in the database or staff user link broken."
+          );
+          throw new Error(
+            "Configuration error: No staff available to manage the appointment. Please contact administration."
+          );
+        }
+        staffUserIdToAssign = firstStaffProfile.userId;
+        console.log(
+          `Auto-assigned to staff user ID: ${staffUserIdToAssign}. Notes: ${
+            input.notes ?? "N/A"
+          }`
+        );
+      } else {
+        // If managedByStaffId is provided, verify it's a valid staff user
+        const staffExists = await ctx.db.staff.findUnique({
+          where: { userId: staffUserIdToAssign },
+        });
+        if (!staffExists) {
+          console.error(
+            `Provided managedByStaffId ${staffUserIdToAssign} does not correspond to a staff member.`
+          );
+          throw new Error(
+            `The selected staff member (ID: ${staffUserIdToAssign}) is not valid.`
+          );
+        }
+        console.log(`Using provided staff user ID: ${staffUserIdToAssign}`);
+      }
+
       return ctx.db.$transaction(async (prisma) => {
+        console.log(
+          `Attempting to create appointment with studentId: ${studentIdToAssign}, staffId: ${staffUserIdToAssign}`
+        );
         const appointment = await prisma.appointment.create({
           data: {
-            takenByStudentId: studentId,
-            managedByStaffId: input.managedByStaffId,
+            takenByStudentId: studentIdToAssign,
+            managedByStaffId: staffUserIdToAssign!,
             appointmentDate: new Date(input.appointmentDate),
             appointmentStatus: "Scheduled",
+            notes: input.notes,
           },
         });
 
@@ -120,8 +282,9 @@ export const appointmentsRouter = createTRPCRouter({
             data: {
               appointmentId: appointment.appointmentId,
               sportType: input.sportType,
-              startTime: new Date(`1970-01-01T${input.startTime}:00Z`),
-              endTime: new Date(`1970-01-01T${input.endTime}:00Z`),
+              startTime: new Date(`1970-01-01T${input.startTime}:00.000Z`), // Ensure ISO 8601 format for time
+              endTime: new Date(`1970-01-01T${input.endTime}:00.000Z`), // Ensure ISO 8601 format for time
+              // If SportAppointment schema has 'notes': sportNotes: input.notes,
             },
           });
         } else if (
@@ -134,8 +297,9 @@ export const appointmentsRouter = createTRPCRouter({
             data: {
               appointmentId: appointment.appointmentId,
               healthType: input.healthType,
-              startTime: new Date(`1970-01-01T${input.startTime}:00Z`),
-              endTime: new Date(`1970-01-01T${input.endTime}:00Z`),
+              startTime: new Date(`1970-01-01T${input.startTime}:00.000Z`),
+              endTime: new Date(`1970-01-01T${input.endTime}:00.000Z`),
+              // If HealthAppointment schema has 'notes': healthNotes: input.notes,
             },
           });
         } else {

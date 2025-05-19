@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { randomUUID } from "crypto";
 import {
   createTRPCRouter,
   protectedProcedure,
@@ -130,7 +131,12 @@ export const cafeteriaRouter = createTRPCRouter({
           managedByStaff: {
             include: {
               user: {
-                select: { id: true, name: true, fName: true, lName: true },
+                select: {
+                  id: true,
+                  name: true,
+                  fName: true,
+                  lName: true,
+                },
               },
             },
           },
@@ -321,17 +327,31 @@ export const cafeteriaRouter = createTRPCRouter({
     .input(z.object({ menuId: z.string().uuid().optional() }))
     .mutation(async ({ ctx, input }) => {
       const studentId = ctx.session.user.id;
-      const digitalCard = await ctx.db.digitalCard.findUniqueOrThrow({
+      let digitalCard = await ctx.db.digitalCard.findUnique({
         where: { userId: studentId },
         select: { cardNo: true },
       });
 
+      if (!digitalCard) {
+        // If no digital card exists, create one for the student
+        const newCardNo = randomUUID();
+        digitalCard = await ctx.db.digitalCard.create({
+          data: {
+            userId: studentId, // Prisma maps userId to SUserID based on the model relation
+            cardNo: newCardNo, // Explicitly provide cardNo
+            // balance will default to 0.0 as per Prisma schema
+          },
+          select: { cardNo: true },
+        });
+      }
+
+      // At this point, digitalCard is guaranteed to exist and have cardNo
       return ctx.db.qRCode.create({
         data: {
           userId: studentId,
           menuId: input.menuId,
           cardNo: digitalCard.cardNo,
-          expiredDate: new Date(Date.now() + 5 * 60 * 1000),
+          expiredDate: new Date(Date.now() + 5 * 60 * 1000), // 5 minutes expiry
         },
       });
     }),

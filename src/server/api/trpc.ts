@@ -137,19 +137,14 @@ export const protectedProcedure = t.procedure
  * users are admin.
  */
 const isAdmin = t.middleware(({ ctx, next }) => {
-  if (!ctx.session || !ctx.session.user) {
+  if (!ctx.session?.user?.id) {
     throw new TRPCError({ code: "UNAUTHORIZED" });
   }
-  // You'll need to implement a way to determine if a user is an admin.
-  // This could be based on a role field in your User model, or a separate Admin model.
-  // For this placeholder, we'll assume there's a `role` property on the session user.
-  // Replace this with your actual admin check logic.
-  if ((ctx.session.user as { role?: string }).role !== "admin") {
+  if (!ctx.session.user.isAdmin) {
     throw new TRPCError({ code: "FORBIDDEN", message: "User is not an admin" });
   }
   return next({
     ctx: {
-      // infers the `session` as non-nullable
       session: { ...ctx.session, user: ctx.session.user },
     },
   });
@@ -169,16 +164,11 @@ export const adminProcedure = t.procedure.use(isAdmin);
  * Reusable middleware to ensure
  * users are staff.
  */
-const isStaff = t.middleware(({ ctx, next }) => {
-  if (!ctx.session || !ctx.session.user) {
+const isStaff = t.middleware(async ({ ctx, next }) => {
+  if (!ctx.session?.user?.id) {
     throw new TRPCError({ code: "UNAUTHORIZED" });
   }
-  // Replace this with your actual staff check logic (e.g., based on a role or Staff model relation)
-  if (
-    (ctx.session.user as { role?: string }).role !== "staff" &&
-    (ctx.session.user as { role?: string }).role !== "admin"
-  ) {
-    // Allow admins to also be staff
+  if (!ctx.session.user.isStaff && !ctx.session.user.isAdmin) {
     throw new TRPCError({
       code: "FORBIDDEN",
       message: "User is not staff or admin",

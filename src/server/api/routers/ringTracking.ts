@@ -405,31 +405,70 @@ export const ringTrackingRouter = createTRPCRouter({
       });
     }),
 
-  // getBusETA: Placeholder - very complex, involves route path, live location, traffic, etc.
-  getBusETA: protectedProcedure
+  // Replaced getBusETA with getStationETAs
+  getStationETAs: protectedProcedure
     .input(
       z.object({
-        vehicleId: z.string().min(1),
         stationId: z.string().uuid(),
+        routeId: z.string().uuid().optional(),
       })
     )
     .query(async ({ ctx, input }) => {
-      console.log(
-        `Calculating ETA for bus ${input.vehicleId} to station ${input.stationId}`
+      const station = await ctx.db.station.findUnique({
+        where: { stationId: input.stationId },
+        select: { stationName: true }, // Only select what's needed
+      });
+
+      if (!station) {
+        // Consider throwing a TRPCError.NotFound if preferred
+        console.error(`Station not found for ETA lookup: ${input.stationId}`);
+        return []; // Return empty array or throw error as per API design
+      }
+
+      // --- Mock ETA Logic ---
+      // In a real system, this would involve:
+      // 1. Finding active buses (with live locations).
+      // 2. Filtering buses on routes serving this station (and input.routeId if provided).
+      // 3. Calculating actual ETAs based on bus location, route path, speed, etc.
+      // For demonstration, we return mock data.
+
+      const mockBuses = [
+        { busId: "BUS-MOCK-001", onRouteNamed: "Campus Loop A" },
+        { busId: "BUS-MOCK-002", onRouteNamed: "Express Route B" },
+        { busId: "BUS-MOCK-003", onRouteNamed: "Campus Loop A" },
+      ];
+
+      const etas = await Promise.all(
+        mockBuses.map(async (bus, index) => {
+          const routeName = input.routeId
+            ? (
+                await ctx.db.route.findUnique({
+                  where: { routeId: input.routeId },
+                  select: { routeName: true },
+                })
+              )?.routeName ?? bus.onRouteNamed
+            : bus.onRouteNamed;
+          return {
+            busId: bus.busId,
+            currentRouteName: routeName,
+            stationName: station.stationName,
+            etaMinutes: Math.floor(Math.random() * (10 + index * 2)) + 1, // Vary ETAs a bit
+          };
+        })
       );
-      // 1. Get bus live location.
-      // 2. Get station location.
-      // 3. Get route path for the bus (from BusDrivesRoute, then RouteStation for stop order).
-      // 4. Calculate distance along path and estimate time based on average speed / historical data.
-      // This is a significant feature, returning placeholder.
-      return {
-        vehicleId: input.vehicleId,
-        stationId: input.stationId,
-        etaMinutes: Math.floor(Math.random() * 15) + 1,
-        etaTime: new Date(
-          Date.now() + (Math.floor(Math.random() * 15) + 1) * 60000
-        ).toISOString(),
-      };
+
+      // Simulate sometimes no buses are coming or route doesn't match well
+      if (Math.random() > 0.8 && !input.routeId) {
+        return [];
+      }
+      if (input.routeId && Math.random() > 0.5) {
+        // Only return ETAs for a specific route if it's plausible
+        return etas.filter((eta) =>
+          eta.currentRouteName.includes(input.routeId?.substring(0, 5) ?? "")
+        );
+      }
+
+      return etas.slice(0, Math.floor(Math.random() * mockBuses.length) + 1); // Return a random number of ETAs
     }),
 
   // --- User Favorite Route Management --- (Section 3.4.4 PRD)

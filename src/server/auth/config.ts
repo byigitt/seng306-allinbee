@@ -1,31 +1,35 @@
 import { env } from "@/env";
 import { PrismaAdapter } from "@auth/prisma-adapter";
-import type { DefaultSession, NextAuthConfig } from "next-auth";
+import type { DefaultSession, NextAuthConfig, Profile } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
-
 import { db } from "@/server/db";
+import cuid from "cuid";
 
 /**
- * Module augmentation for `next-auth` types. Allows us to add custom properties to the `session`
- * object and keep type safety.
- *
- * @see https://next-auth.js.org/getting-started/typescript#module-augmentation
+ * Module augmentation for `next-auth` types.
  */
 declare module "next-auth" {
-  interface Session extends DefaultSession {
+  /**
+   * Returned by `useSession`, `getSession` and received as a prop on the `SessionProvider` React Context
+   */
+  interface Session {
     user: {
       id: string;
-      // ...other properties
-      // role: UserRole;
+      fName?: string;
+      lName?: string;
+      isAdmin?: boolean;
+      isStaff?: boolean;
     } & DefaultSession["user"];
   }
 
-  // interface User {
-  //   // ...other properties
-  //   // role: UserRole;
-  // }
+  // Augment the default NextAuth User type to include fName and lName
+  // This User type is what's available in callbacks like `signIn`
+  interface User {
+    fName?: string;
+    lName?: string;
+  }
 }
 
 /**
@@ -51,7 +55,7 @@ export const authConfig = {
           typeof credentials.email !== "string" ||
           typeof credentials.password !== "string"
         ) {
-          return null; // Or throw an error
+          return null;
         }
 
         const user = await db.user.findUnique({
@@ -59,7 +63,6 @@ export const authConfig = {
         });
 
         if (!user || !user.password) {
-          // No user found, or user registered via OAuth and has no passwordHash
           return null;
         }
 
@@ -72,21 +75,73 @@ export const authConfig = {
           return null;
         }
 
-        // Return user object without passwordHash
         const { password, ...userWithoutPassword } = user;
         return userWithoutPassword;
       },
     }),
   ],
   callbacks: {
-    session: ({ session, user }) => ({
-      ...session,
-      user: {
-        ...session.user,
-        id: user.id,
-      },
-    }),
-    // jwt callback might be needed if using JWT strategy, but PrismaAdapter implies database strategy
+    async signIn({ user, account, profile }) {
+      if (account?.provider === "google" && profile) {
+        try {
+          const nameParts = profile.name?.split(" ") ?? [];
+          user.fName = nameParts[0] || "";
+          user.lName = nameParts.slice(1).join(" ") || nameParts[0] || "";
+        } catch (error) {
+          console.error("Error processing name parts in signIn:", error);
+        }
+      }
+
+      // After User record is ensured by PrismaAdapter (for new users) or fetched (for existing),
+      // ensure a corresponding Student record exists.
+      if (user.id) {
+        const student = await db.student.findUnique({
+          where: { userId: user.id },
+        });
+        if (!student) {
+          try {
+            await db.student.create({
+              data: {
+                userId: user.id,
+                // managingAdminId can be left null or set to a default if applicable
+              },
+            });
+            console.log(
+              `Automatically created Student record for User ID: ${user.id}`
+            );
+          } catch (dbError) {
+            console.error(
+              `Failed to create Student record for User ID: ${user.id}`,
+              dbError
+            );
+            // Decide if this should prevent sign-in. For now, we'll allow sign-in to continue.
+            // throw new Error("Failed to set up student profile.");
+          }
+        }
+      }
+      return true; // Continue with the sign-in process
+    },
+    session: async ({ session, user }) => {
+      // user here is the user from your database (thanks to PrismaAdapter)
+      // It includes id, fName, lName as defined in your Prisma schema.
+      const adminRecord = await db.admin.findUnique({
+        where: { userId: user.id },
+      });
+      const staffRecord = await db.staff.findUnique({
+        where: { userId: user.id },
+      });
+
+      return {
+        ...session,
+        user: {
+          ...session.user,
+          id: user.id,
+          fName: (user as any).fName,
+          lName: (user as any).lName,
+          isAdmin: !!adminRecord,
+          isStaff: !!staffRecord,
+        },
+      };
+    },
   },
-  // session: { strategy: "jwt" }, // Use "database" strategy (default with adapter)
 } satisfies NextAuthConfig;
