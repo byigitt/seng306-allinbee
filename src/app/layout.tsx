@@ -1,8 +1,8 @@
 import "@/styles/globals.css";
 
+import { ThemeProvider } from "@/app/_components/theme-provider"; // Assuming ThemeProvider is set up for Shadcn
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
-import { ThemeProvider } from "@/app/_components/theme-provider"; // Assuming ThemeProvider is set up for Shadcn
 
 import { TRPCReactProvider } from "@/trpc/react";
 
