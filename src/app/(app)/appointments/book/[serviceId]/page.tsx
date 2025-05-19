@@ -68,7 +68,7 @@ const convertTo24HourFormat = (timeStr: string | null | undefined): string => {
 	
 	const timeValues = timePart.split(":").map(Number);
 	let hours = timeValues[0];
-	let minutes = timeValues[1];
+	const minutes = timeValues[1];
 
 	if (hours === undefined || minutes === undefined || Number.isNaN(hours) || Number.isNaN(minutes)) {
 		console.error(`convertTo24HourFormat: Invalid time numbers in '${timePart}'`);
@@ -117,7 +117,7 @@ export default function BookAppointmentPage() {
 	
 	const createAppointmentMutation = api.appointments.createAppointment.useMutation({
 		onSuccess: (data) => {
-			toast.success(`Appointment Confirmed!`, {
+			toast.success("Appointment Confirmed!", {
 				description: `Your booking for ${serviceInfo?.name} on ${selectedDate?.toLocaleDateString()} at ${selectedTimeSlot} is scheduled.`,
 				action: {
 					label: "View My Appointments",
@@ -269,7 +269,7 @@ export default function BookAppointmentPage() {
 										No slots available for this date.
 									</p>
 								)}
-								{availableSlotsQuery.data && availableSlotsQuery.data.map((slot) => (
+								{availableSlotsQuery.data?.map((slot) => (
 									<Button
 										key={slot}
 										variant={selectedTimeSlot === slot ? "default" : "outline"}

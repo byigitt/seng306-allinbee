@@ -29,7 +29,9 @@ import { useState, useEffect } from "react";
 import { toast } from "sonner";
 
 type RouterOutputs = inferRouterOutputs<AppRouter>;
-type Appointment = RouterOutputs["appointments"]["listMyAppointments"]["appointments"][number];
+// Corrected Appointment type definition
+// Assuming listMyAppointments directly returns an array of appointments
+type Appointment = RouterOutputs["appointments"]["listMyAppointments"][number];
 
 function getAppointmentTypeAndDetails(appointment: Appointment): {
 	typeName: string;
@@ -59,12 +61,13 @@ function getAppointmentTypeAndDetails(appointment: Appointment): {
 
 export default function MyAppointmentsPage() {
 	const [showAllPast, setShowAllPast] = useState(false);
-	const appointmentsQuery = api.appointments.listMyAppointments.useQuery({}); // Default take/skip
+	// Corrected useQuery call, assuming no input is required for listMyAppointments
+	const appointmentsQuery = api.appointments.listMyAppointments.useQuery(undefined); 
 	const cancelMutation = api.appointments.cancelAppointment.useMutation({
 		onSuccess: (cancelledAppointmentData, variables) => {
-			// Find the original appointment from the query cache to get full details for the toast
-			const originalAppointment = appointmentsQuery.data?.appointments.find(
-				(appt) => appt.appointmentId === variables.appointmentId
+			// Corrected access to appointmentsQuery.data
+			const originalAppointment = appointmentsQuery.data?.find(
+				(appt: Appointment) => appt.appointmentId === variables.appointmentId
 			);
 
 			let toastDescription = `The appointment on ${new Date(cancelledAppointmentData.appointmentDate).toLocaleDateString()} has been cancelled.`;
@@ -105,12 +108,13 @@ export default function MyAppointmentsPage() {
 		return <p>Error loading appointments: {appointmentsQuery.error.message}</p>;
 	}
 
-	const allAppointments = appointmentsQuery.data?.appointments ?? [];
+	// Corrected access to appointmentsQuery.data
+	const allAppointments: Appointment[] = appointmentsQuery.data ?? [];
 	const upcomingAppointments = allAppointments.filter(
-		(a) => a.appointmentStatus === "Scheduled",
+		(a: Appointment) => a.appointmentStatus === "Scheduled",
 	);
 	const pastOrCancelledAppointments = allAppointments.filter(
-		(a) => a.appointmentStatus !== "Scheduled",
+		(a: Appointment) => a.appointmentStatus !== "Scheduled",
 	);
 
 	const displayedPastOrCancelled = showAllPast ? pastOrCancelledAppointments : pastOrCancelledAppointments.slice(0, 4);
@@ -206,7 +210,7 @@ export default function MyAppointmentsPage() {
 				<h2 className="mb-4 font-semibold text-xl">Upcoming Appointments</h2>
 				{upcomingAppointments.length > 0 ? (
 					<div className="grid gap-4 md:grid-cols-2">
-						{upcomingAppointments.map(appt => renderAppointmentCard(appt, true))}
+						{upcomingAppointments.map((appt: Appointment) => renderAppointmentCard(appt, true))}
 					</div>
 				) : (
 					<p className="text-muted-foreground">
@@ -226,7 +230,7 @@ export default function MyAppointmentsPage() {
 				</div>
 				{displayedPastOrCancelled.length > 0 ? (
 					<div className="grid gap-4 md:grid-cols-2">
-						{displayedPastOrCancelled.map(appt => renderAppointmentCard(appt, false))}
+						{displayedPastOrCancelled.map((appt: Appointment) => renderAppointmentCard(appt, false))}
 					</div>
 				) : (
 					<p className="text-muted-foreground">
