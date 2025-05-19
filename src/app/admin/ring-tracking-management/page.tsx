@@ -6,20 +6,27 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
-import { MapPin, Route } from "lucide-react";
+import { ArrowLeft, MapPin, Route } from "lucide-react";
 import Link from "next/link";
 
 export default function AdminRingTrackingOverviewPage() {
 	return (
 		<div className="space-y-6">
 			<div className="flex flex-col items-start gap-2 md:flex-row md:items-center md:justify-between">
-				<div>
-					<h1 className="font-semibold text-xl md:text-2xl">
-						Ring Bus Management
-					</h1>
-					<p className="text-muted-foreground">
-						Manage bus routes and station details.
-					</p>
+				<div className="flex items-center gap-4">
+					<Button variant="ghost" size="icon" asChild>
+						<Link href="/admin">
+							<ArrowLeft className="h-5 w-5" />
+						</Link>
+					</Button>
+					<div>
+						<h1 className="font-semibold text-xl md:text-2xl">
+							Ring Bus Management
+						</h1>
+						<p className="text-muted-foreground">
+							Manage bus routes and station details.
+						</p>
+					</div>
 				</div>
 			</div>
 			<div className="grid gap-4 sm:grid-cols-1 md:grid-cols-2">

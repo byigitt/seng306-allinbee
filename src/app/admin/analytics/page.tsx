@@ -7,12 +7,15 @@ import {
 } from "@/components/ui/card";
 import {
 	Activity,
+	ArrowLeft,
 	CalendarDays,
 	DollarSign,
 	ShoppingCart,
 	Users,
 	Utensils,
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import Link from "next/link";
 
 // Placeholder for a chart component - in a real app, you'd use a library like Recharts or Chart.js
 const PlaceholderChart = ({ title }: { title: string }) => (
@@ -25,9 +28,16 @@ export default function AdminAnalyticsPage() {
 	return (
 		<div className="flex flex-col gap-6 p-4 md:p-6">
 			<div className="flex items-center justify-between">
-				<h1 className="font-semibold text-2xl md:text-3xl">
-					Analytics Dashboard
-				</h1>
+				<div className="flex items-center gap-4">
+					<Button variant="ghost" size="icon" asChild>
+						<Link href="/admin">
+							<ArrowLeft className="h-5 w-5" />
+						</Link>
+					</Button>
+					<h1 className="font-semibold text-2xl md:text-3xl">
+						Analytics Dashboard
+					</h1>
+				</div>
 				{/* Placeholder for date range picker or other global filters */}
 			</div>
 
