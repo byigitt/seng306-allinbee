@@ -17,7 +17,7 @@ datasource db {
 // Modified User Model for NextAuth and new fields from DDL
 model User {
     // NextAuth original fields + DDL "UserID"
-    id            String    @id @map("UserID") // Changed from cuid() to map DDL "UserID" varchar(25)
+    id            String    @id @default(cuid()) @map("UserID") // Changed from cuid() to map DDL "UserID" varchar(25)
     name          String?   // This field is from NextAuth. SQL has FName, LName.
     email         String    @unique @map("E-Mail") // DDL: "E-Mail" varchar(255) UNIQUE
     emailVerified DateTime?
@@ -258,6 +258,7 @@ model Appointment {
     managedByStaff    Staff             @relation("StaffManagesAppointment", fields: [managedByStaffId], references: [userId], onDelete: Restrict, onUpdate: Cascade)
     appointmentDate   DateTime          @db.Date @map("AppointmentDate") // DDL: "AppointmentDate" date NOT NULL
     appointmentStatus AppointmentStatus @default(Scheduled)
+    notes             String?           // Optional notes field added
     bookBorrowRecords BookBorrowRecord[]  // Changed from bookAppointment BookAppointment?
     sportAppointment  SportAppointment?
     healthAppointment HealthAppointment?
