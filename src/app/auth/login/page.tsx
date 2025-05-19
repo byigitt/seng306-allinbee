@@ -14,9 +14,10 @@ import { Label } from "@/components/ui/label";
 import Link from "next/link";
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { useState, Suspense } from "react";
+import { Skeleton } from "@/components/ui/skeleton";
 
-export default function LoginPage() {
+function LoginPageContent() {
 	const router = useRouter();
 	const searchParams = useSearchParams();
 	const callbackUrl = searchParams.get("callbackUrl") || "/";
@@ -124,6 +125,53 @@ export default function LoginPage() {
 					<p className="text-muted-foreground">
 						Having trouble? <Link href="/contact-support" className="font-medium text-primary hover:underline">Contact support</Link>
 					</p>
+				</CardFooter>
+			</Card>
+		</div>
+	);
+}
+
+export default function LoginPage() {
+	return (
+		<Suspense fallback={<LoginPageLoadingSkeleton />}>
+			<LoginPageContent />
+		</Suspense>
+	);
+}
+
+function LoginPageLoadingSkeleton() {
+	return (
+		<div className="flex min-h-screen items-center justify-center bg-background px-4 py-12 sm:px-6 lg:px-8">
+			<Card className="w-full max-w-md">
+				<CardHeader className="space-y-1 text-center">
+					<Skeleton className="h-8 w-3/4 mx-auto" />
+					<Skeleton className="h-4 w-1/2 mx-auto" />
+				</CardHeader>
+				<CardContent className="space-y-4">
+					<Skeleton className="h-6 w-full rounded-md bg-destructive/10 p-3" /> 
+					<div className="space-y-4">
+						<div className="space-y-2">
+							<Skeleton className="h-4 w-1/4" />
+							<Skeleton className="h-10 w-full" />
+						</div>
+						<div className="space-y-2">
+							<Skeleton className="h-4 w-1/4" />
+							<Skeleton className="h-10 w-full" />
+						</div>
+						<Skeleton className="h-10 w-full" />
+					</div>
+					<div className="relative my-4">
+						<div className="absolute inset-0 flex items-center">
+							<Skeleton className="h-px w-full" />
+						</div>
+						<div className="relative flex justify-center text-xs uppercase">
+							<Skeleton className="h-4 w-20 px-2" />
+						</div>
+					</div>
+					<Skeleton className="h-10 w-full" />
+				</CardContent>
+				<CardFooter className="text-center text-sm">
+					<Skeleton className="h-4 w-3/4 mx-auto" />
 				</CardFooter>
 			</Card>
 		</div>
