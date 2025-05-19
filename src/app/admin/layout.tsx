@@ -125,6 +125,15 @@ export default function AdminLayout({
 							))}
 						</nav>
 					</div>
+					{/* Back to Main Menu button moved to the bottom */}
+					<div className="px-4 py-2 border-t bg-muted/30 mt-auto">
+						<Link
+							href="/"
+							className="inline-block w-full rounded-md bg-primary px-3 py-2 text-center text-sm font-semibold text-primary-foreground shadow hover:bg-primary/90 transition"
+						>
+							← Back to Main Menu
+						</Link>
+					</div>
 				</div>
 			</div>
 
