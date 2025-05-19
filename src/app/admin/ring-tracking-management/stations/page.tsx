@@ -78,7 +78,7 @@ export default function ManageBusStationsPage() {
           )}
         </CardContent>
       </Card>
-      <Button variant="link" asChild className="mt-4">
+      <Button variant="link" asChild className="mt-4 mb-[80px]">
         <Link href="/admin/ring-tracking-management">Back to Ring Tracking Overview</Link>
       </Button>
     </div>
