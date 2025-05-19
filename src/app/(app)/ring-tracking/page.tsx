@@ -1,3 +1,5 @@
+"use client";
+
 import { Button } from "@/components/ui/button";
 import {
 	Card,
@@ -7,8 +9,15 @@ import {
 	CardTitle,
 } from "@/components/ui/card";
 import { Clock, MapPinned, Star } from "lucide-react";
-import Image from "next/image";
+// import Image from "next/image"; // No longer needed for static map
 import Link from "next/link";
+import dynamic from 'next/dynamic';
+
+// Dynamically import LiveBusMap with SSR turned off
+const LiveBusMap = dynamic(() => import('./_components/LiveBusMap'), {
+	ssr: false,
+	loading: () => <div className="flex aspect-video w-full items-center justify-center rounded-lg bg-muted text-muted-foreground">Loading map...</div>
+});
 
 export default function RingTrackingPage() {
 	return (
@@ -41,24 +50,17 @@ export default function RingTrackingPage() {
 						Live View
 					</CardTitle>
 					<CardDescription>
-						Showing mock bus locations. Real integration needed.
+						Showing live bus locations. Data refreshes automatically.
 					</CardDescription>
 				</CardHeader>
 				<CardContent>
-					<div className="flex aspect-video w-full items-center justify-center overflow-hidden rounded-lg bg-muted">
-						{/* In a real app, this would be an interactive map component */}
-						<Image
-							src="/placeholders/campus-map-mock.png"
-							alt="Campus Map Mockup"
-							width={800}
-							height={450}
-							className="object-cover"
-						/>
+					{/* Use a fixed height container for the map */}
+					<div className="w-full overflow-hidden rounded-lg bg-muted h-[70vh]">
+						<LiveBusMap />
 					</div>
 				</CardContent>
 			</Card>
 
-			{/* Placeholder for additional info, e.g. list of active buses or incidents */}
 			<div className="mt-8 mb-[100px] flex justify-center">
 				<Button variant="link" asChild>
 					<Link href="/">Back to Home</Link>
