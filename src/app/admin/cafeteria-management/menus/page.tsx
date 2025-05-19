@@ -28,28 +28,29 @@ export default function ManageMenusPage() {
   // TODO: Implement CRUD for menus
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col items-start gap-2 md:flex-row md:items-center md:justify-between">
         <div>
-            <h1 className="text-2xl font-semibold">Manage Menus</h1>
+            <h1 className="text-xl md:text-2xl font-semibold">Manage Menus</h1>
             <p className="text-muted-foreground">Create, publish, and update daily or weekly menus.</p>
         </div>
-        {/* Button to trigger a modal/form for creating a new menu */}
-        <Button><PlusCircle className="mr-2 h-4 w-4" /> Create New Menu</Button>
+        <Button className="w-full sm:w-auto"><PlusCircle className="mr-2 h-4 w-4" /> Create New Menu</Button>
       </div>
 
       <div className="grid gap-6 md:grid-cols-3">
         <Card className="md:col-span-1">
           <CardHeader>
-            <CardTitle>Select Date / Create Menu</CardTitle>
+            <CardTitle className="text-lg">Select Date / Create Menu</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <Calendar
-              mode="single"
-              selected={selectedDate}
-              onSelect={setSelectedDate}
-              className="rounded-md border p-0"
-            />
-            <h3 className="text-lg font-medium pt-4">Select Dishes for {selectedDate?.toLocaleDateString() || 'selected date'}:</h3>
+          <CardContent className="space-y-4 p-4">
+            <div className="flex justify-center">
+              <Calendar
+                mode="single"
+                selected={selectedDate}
+                onSelect={setSelectedDate}
+                className="rounded-md border"
+                />
+            </div>
+            <h3 className="text-base md:text-lg font-medium pt-4">Select Dishes for {selectedDate?.toLocaleDateString() || 'selected date'}:</h3>
             <div className="space-y-2 max-h-60 overflow-y-auto pr-2">
                 {mockDishesData.map(dish => (
                     <div key={dish.id} className="flex items-center space-x-2">
@@ -58,13 +59,13 @@ export default function ManageMenusPage() {
                     </div>
                 ))}
             </div>
-            <Button className="w-full">Save Menu for {selectedDate?.toLocaleDateString() || 'Date'}</Button>
+            <Button className="w-full mt-2">Save Menu for {selectedDate?.toLocaleDateString() || 'Date'}</Button>
           </CardContent>
         </Card>
 
-        <Card className="md:col-span-2">
-          <CardHeader>
-            <CardTitle>Existing Menus</CardTitle>
+        <Card className="md:col-span-2 mb-[80px]">
+          <CardHeader className="p-4">
+            <CardTitle className="text-lg">Existing Menus</CardTitle>
             <CardDescription>Overview of currently defined menus.</CardDescription>
           </CardHeader>
           <CardContent>
