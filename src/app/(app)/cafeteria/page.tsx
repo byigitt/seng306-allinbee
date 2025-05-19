@@ -51,7 +51,7 @@ export default function CafeteriaMenuPage() {
           </Card>
         ))}
       </div>
-        <div className="mt-8 flex justify-around">
+        <div className="mt-8 flex justify-around mb-[100px]">
             <Button variant="outline" asChild>
                 <Link href="/cafeteria/digital-wallet">My Digital Wallet</Link>
             </Button>

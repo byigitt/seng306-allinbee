@@ -48,7 +48,7 @@ export default function BrowseAppointmentsPage() {
         </Button>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 mb-[80px]">
         {mockServices.map((service) => {
           const Icon = service.icon;
           return (

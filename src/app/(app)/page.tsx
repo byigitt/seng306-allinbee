@@ -58,7 +58,7 @@ export default function AppPage() {
       </div>
 
       {/* Placeholder for Admin link - adjust based on actual auth roles later */}
-      <div className="mt-12 text-center mb-8">
+      <div className="mt-12 text-center mb-12">
         <p className="text-sm text-muted-foreground mb-2">Are you an administrator?</p>
         <Button asChild variant="outline">
           <Link href="/admin">Go to Admin Panel <Cog className="ml-2 h-4 w-4" /></Link>
