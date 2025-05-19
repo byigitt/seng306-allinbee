@@ -40,7 +40,6 @@ model User {
     admin           Admin?              // One-to-one with Admin specific data
     staff           Staff?              // One-to-one with Staff specific data
     favoriteRoutes  UserFavoriteRoute[] // Many-to-many for favorite routes
-    // Removed: posts Post[] - This line is removed as Post model is removed
 }
 
 // Necessary for Next auth - These models remain largely unchanged,
