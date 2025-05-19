@@ -18,6 +18,7 @@ import { signOut } from "next-auth/react";
 import { useRouter } from 'next/navigation'; // Added for redirection
 import type { TRPCClientErrorLike } from "@trpc/client"; // Import TRPCClientErrorLike
 import type { AppRouter } from "@/server/api/root"; // Import AppRouter for error typing
+import { toast } from "sonner"; // Import toast
 
 export default function ProfilePage() {
 	const [isEditing, setIsEditing] = useState(false);
@@ -58,8 +59,10 @@ export default function ProfilePage() {
 		if (userQuery.isError && userQuery.error) {
 			const error = userQuery.error;
 			if (error.data?.code === 'UNAUTHORIZED') {
+				toast.error("Unauthorized", { description: "You need to be logged in to view your profile. Redirecting..." });
 				router.push('/auth/login');
 			} else {
+				toast.error("Profile Error", { description: error.message || "Could not fetch your profile data." });
 				console.error("Error fetching profile:", error.message);
 			}
 		}
@@ -68,11 +71,11 @@ export default function ProfilePage() {
 	const updateUserMutation = api.user.updateMe.useMutation({
 		onSuccess: async () => {
 			await userQuery.refetch();
-			alert("Profile updated successfully!");
+			toast.success("Profile Updated", { description: "Your profile information has been saved." });
 			setIsEditing(false);
 		},
 		onError: (error) => {
-			alert(`Error updating profile: ${error.message}`);
+			toast.error("Update Failed", { description: error.message || "Could not update your profile. Please try again." });
 		},
 	});
 

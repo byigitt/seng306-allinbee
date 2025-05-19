@@ -1,24 +1,45 @@
 "use client";
 
-import { type QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { httpBatchStreamLink, loggerLink } from "@trpc/client";
+import { type QueryClientConfig, QueryClientProvider, QueryCache } from "@tanstack/react-query";
+import { httpBatchStreamLink, loggerLink, TRPCClientError } from "@trpc/client";
 import { createTRPCReact } from "@trpc/react-query";
 import type { inferRouterInputs, inferRouterOutputs } from "@trpc/server";
 import { useState } from "react";
 import SuperJSON from "superjson";
+import { useRouter } from 'next/navigation';
 
 import type { AppRouter } from "@/server/api/root";
-import { createQueryClient } from "./query-client";
 
-let clientQueryClientSingleton: QueryClient | undefined = undefined;
-const getQueryClient = () => {
+let clientQueryClientSingleton: import("@tanstack/react-query").QueryClient | undefined = undefined;
+const getQueryClientInstance = (router?: ReturnType<typeof useRouter>) => {
+	const queryClientConfig: QueryClientConfig = {
+		defaultOptions: {
+			queries: {
+				staleTime: 1 * 1000 * 60, // 1 minute, example, adjust as needed
+				retry: (failureCount, error) => {
+					if (error instanceof TRPCClientError && error.data?.code === 'UNAUTHORIZED') {
+						return false; // Do not retry on UNAUTHORIZED
+					}
+					return failureCount < 3; // Default retry count for other errors
+				},
+			},
+		},
+		queryCache: new QueryCache({
+			onError: (error) => {
+				if (error instanceof TRPCClientError && error.data?.code === 'UNAUTHORIZED') {
+					const publicAuthPaths = ['/auth/login', '/auth/register'];
+					if (router && !publicAuthPaths.includes(window.location.pathname)) {
+						router.push('/auth/login?reason=unauthorized');
+					}
+				}
+			},
+		}),
+	};
+
 	if (typeof window === "undefined") {
-		// Server: always make a new query client
-		return createQueryClient();
+		return new (require("@tanstack/react-query").QueryClient)(queryClientConfig);
 	}
-	// Browser: use singleton pattern to keep the same query client
-	clientQueryClientSingleton ??= createQueryClient();
-
+	clientQueryClientSingleton ??= new (require("@tanstack/react-query").QueryClient)(queryClientConfig);
 	return clientQueryClientSingleton;
 };
 
@@ -39,7 +60,8 @@ export type RouterInputs = inferRouterInputs<AppRouter>;
 export type RouterOutputs = inferRouterOutputs<AppRouter>;
 
 export function TRPCReactProvider(props: { children: React.ReactNode }) {
-	const queryClient = getQueryClient();
+	const router = useRouter();
+	const queryClient = getQueryClientInstance(router);
 
 	const [trpcClient] = useState(() =>
 		api.createClient({

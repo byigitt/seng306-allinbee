@@ -3,6 +3,7 @@ import "@/styles/globals.css";
 import { ThemeProvider } from "@/app/_components/theme-provider"; // Assuming ThemeProvider is set up for Shadcn
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
+import { Toaster } from "sonner"; // Import Toaster
 
 import { TRPCReactProvider } from "@/trpc/react";
 
@@ -28,7 +29,10 @@ export default function RootLayout({
 					enableSystem
 					disableTransitionOnChange
 				>
-					<TRPCReactProvider>{children}</TRPCReactProvider>
+					<TRPCReactProvider>
+						{children}
+						<Toaster richColors position="top-center" /> 
+					</TRPCReactProvider>
 				</ThemeProvider>
 			</body>
 		</html>
