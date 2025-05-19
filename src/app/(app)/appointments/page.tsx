@@ -87,6 +87,11 @@ export default function BrowseAppointmentsPage() {
 					);
 				})}
 			</div>
+			<div className="mt-8 mb-[100px] flex justify-center">
+				<Button variant="link" asChild>
+					<Link href="/">Back to Home</Link>
+				</Button>
+			</div>
 		</div>
 	);
 }

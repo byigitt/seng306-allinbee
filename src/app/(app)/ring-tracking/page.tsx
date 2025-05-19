@@ -59,6 +59,11 @@ export default function RingTrackingPage() {
 			</Card>
 
 			{/* Placeholder for additional info, e.g. list of active buses or incidents */}
+			<div className="mt-8 mb-[100px] flex justify-center">
+				<Button variant="link" asChild>
+					<Link href="/">Back to Home</Link>
+				</Button>
+			</div>
 		</div>
 	);
 }

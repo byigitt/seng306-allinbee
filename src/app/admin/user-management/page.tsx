@@ -31,7 +31,8 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table";
-import { Filter, MoreHorizontal, PlusCircle, Search } from "lucide-react";
+import { ArrowLeft, Filter, MoreHorizontal, PlusCircle, Search } from "lucide-react";
+import Link from "next/link";
 
 type User = {
 	id: string;
@@ -114,7 +115,14 @@ export default function AdminUserManagementPage() {
 	return (
 		<div className="flex flex-col gap-4 p-4 md:p-6">
 			<div className="flex items-center justify-between">
-				<h1 className="font-semibold text-2xl md:text-3xl">User Management</h1>
+				<div className="flex items-center gap-4">
+					<Button variant="ghost" size="icon" asChild>
+						<Link href="/admin">
+							<ArrowLeft className="h-5 w-5" />
+						</Link>
+					</Button>
+					<h1 className="font-semibold text-2xl md:text-3xl">User Management</h1>
+				</div>
 				<Button size="sm" variant="outline">
 					<PlusCircle className="mr-2 h-4 w-4" />
 					Add New User (Placeholder)
