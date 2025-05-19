@@ -8,6 +8,7 @@ import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import cuid from "cuid";
+import { TRPCError } from "@trpc/server";
 
 // Helper to determine user role based on included relations
 const determineUserRole = (
@@ -180,6 +181,80 @@ export const userRouter = createTRPCRouter({
         ...user,
         role: determineUserRole(user),
       };
+    }),
+
+  // Admin: Create new user
+  adminCreateUser: adminProcedure
+    .input(
+      z.object({
+        email: z.string().email({ message: "Invalid email address." }),
+        password: z
+          .string()
+          .min(8, { message: "Password must be at least 8 characters." }),
+        fName: z.string().min(1, { message: "First name is required." }),
+        lName: z.string().min(1, { message: "Last name is required." }),
+        phoneNumber: z.string().optional(),
+        isStudent: z.boolean().optional(),
+        isAdmin: z.boolean().optional(),
+        isStaff: z.boolean().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const {
+        email,
+        password,
+        fName,
+        lName,
+        phoneNumber,
+        isStudent,
+        isAdmin,
+        isStaff,
+      } = input;
+
+      const existingUser = await ctx.db.user.findUnique({ where: { email } });
+      if (existingUser) {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "User with this email already exists.",
+        });
+      }
+
+      const hashedPassword = await bcrypt.hash(password, 10);
+      const newUserId = cuid();
+
+      return ctx.db.$transaction(async (prisma) => {
+        const user = await prisma.user.create({
+          data: {
+            id: newUserId,
+            email,
+            password: hashedPassword,
+            fName,
+            lName,
+            name: `${fName} ${lName}`,
+            phoneNumber: phoneNumber,
+            emailVerified: new Date(), // Admin-created users are considered verified
+          },
+        });
+
+        if (isStudent) {
+          await prisma.student.create({ data: { userId: newUserId } });
+        }
+        if (isAdmin) {
+          await prisma.admin.create({ data: { userId: newUserId } });
+        }
+        if (isStaff) {
+          await prisma.staff.create({ data: { userId: newUserId } });
+        }
+
+        const userWithRelations = await prisma.user.findUniqueOrThrow({
+          where: { id: newUserId },
+          include: { student: true, admin: true, staff: true },
+        });
+        return {
+          ...userWithRelations,
+          role: determineUserRole(userWithRelations),
+        };
+      });
     }),
 
   // Admin: Update user (e.g., assign roles, update details)

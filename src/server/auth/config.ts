@@ -136,8 +136,8 @@ export const authConfig = {
         user: {
           ...session.user,
           id: user.id,
-          fName: (user as any).fName,
-          lName: (user as any).lName,
+          fName: user.fName,
+          lName: user.lName,
           isAdmin: !!adminRecord,
           isStaff: !!staffRecord,
         },

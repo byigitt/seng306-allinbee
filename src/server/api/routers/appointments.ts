@@ -3,13 +3,14 @@ import {
   createTRPCRouter,
   protectedProcedure,
   adminProcedure,
-  staffProcedure,
+  // staffProcedure, // Not currently used, can be re-added if needed
 } from "@/server/api/trpc";
-import type {
-  Prisma,
-  Appointment,
-  BookBorrowRecord,
-  Staff,
+import {
+  Prisma, // For instanceof checks and other value usages
+  type Appointment,
+  type BookBorrowRecord,
+  type Staff,
+  // type AppointmentStatus is not directly used as a type here, enum is defined below
 } from "@prisma/client";
 
 // Enum for AppointmentStatus based on Prisma schema
@@ -22,17 +23,32 @@ const appointmentStatusSchema = z.enum([
 // Enum for AppointmentType as described in PRD
 const appointmentTypeSchema = z.enum(["Book", "Sport", "Health"]);
 
-// Helper type for book details in book appointment
+// Helper type for book details in book appointment (used in createAppointment)
 const bookDetailSchema = z.object({
   isbn: z.string().min(1),
   borrowQuantity: z.number().int().positive().default(1),
 });
 
+// Schema for book management (create/update)
+const bookManagementItemSchema = z.object({
+  isbn: z
+    .string()
+    .min(10, "ISBN must be at least 10 characters")
+    .max(20, "ISBN can be at most 20 characters"), // Prisma schema shows ISBN varchar(20)
+  title: z.string().min(1, "Title is required"),
+  author: z.string().optional(),
+  quantityInStock: z.coerce
+    .number()
+    .int({ message: "Quantity must be a whole number." })
+    .min(0, "Quantity cannot be negative."),
+});
+
 export const appointmentsRouter = createTRPCRouter({
+  // --- Slot Availability ---
   getAvailableSlots: protectedProcedure
     .input(
       z.object({
-        serviceId: z.string(),
+        serviceId: z.string(), // serviceId might be used in future to filter by specific staff/resource
         date: z.string().datetime(), // ISO string from client
       })
     )
@@ -40,28 +56,22 @@ export const appointmentsRouter = createTRPCRouter({
       const { date: selectedDateISO } = input;
       const selectedDate = new Date(selectedDateISO);
 
-      // Define operating hours (e.g., 9 AM to 5 PM)
       const openingHour = 9;
       const closingHour = 17; // 5 PM
-      const slotDurationMinutes = 60;
 
       const allPossibleSlots: string[] = [];
       for (let hour = openingHour; hour < closingHour; hour++) {
         const slotDate = new Date(selectedDate);
         slotDate.setHours(hour, 0, 0, 0);
-
-        // Format to HH:MM AM/PM
         let h = slotDate.getHours();
         const m = slotDate.getMinutes();
         const ampm = h >= 12 ? "PM" : "AM";
         h = h % 12;
-        h = h ? h : 12; // Handle midnight (0 hours) as 12 AM
-        const minutesStr = m < 10 ? "0" + m : m;
+        h = h ? h : 12;
+        const minutesStr = m < 10 ? `0${m.toString()}` : m.toString();
         allPossibleSlots.push(`${h}:${minutesStr} ${ampm}`);
       }
 
-      // Fetch existing appointments for the selected day
-      // This is a simplified query. A real system would filter by specific staff/resource if applicable.
       const dayStart = new Date(selectedDate);
       dayStart.setHours(0, 0, 0, 0);
       const dayEnd = new Date(selectedDate);
@@ -73,23 +83,19 @@ export const appointmentsRouter = createTRPCRouter({
             gte: dayStart,
             lte: dayEnd,
           },
-          // Add more filters if needed, e.g., for a specific staff member or resource related to serviceId
-          // appointmentStatus: { notIn: ["Cancelled", "NoShow"] } // Only consider active bookings
+          appointmentStatus: { notIn: ["Cancelled", "NoShow"] },
         },
         include: {
-          // Include sport/health to get their specific start times
           sportAppointment: true,
           healthAppointment: true,
         },
       });
-
       const bookedTimeSlots = new Set<string>();
-      existingAppointments.forEach((appt) => {
+      for (const appt of existingAppointments) {
         let apptStartTime: Date | null = null;
         if (appt.sportAppointment?.startTime) {
-          // Sport/Health appointments store time separately. We need to combine with appointmentDate.
-          const baseDate = new Date(appt.appointmentDate); // Use the date part from the main appointment
-          const time = new Date(appt.sportAppointment.startTime); // This date part is 1970-01-01
+          const baseDate = new Date(appt.appointmentDate);
+          const time = new Date(appt.sportAppointment.startTime);
           baseDate.setHours(time.getUTCHours(), time.getUTCMinutes(), 0, 0);
           apptStartTime = baseDate;
         } else if (appt.healthAppointment?.startTime) {
@@ -97,10 +103,16 @@ export const appointmentsRouter = createTRPCRouter({
           const time = new Date(appt.healthAppointment.startTime);
           baseDate.setHours(time.getUTCHours(), time.getUTCMinutes(), 0, 0);
           apptStartTime = baseDate;
+        } else if (appt.appointmentType === "Book") {
+          // For book appointments, assume they take a standard slot if no specific time field exists
+          // For now, if it's a book appointment, we can use the main appointmentDate if it has time info
+          // or assume it takes one of the hourly slots.
+          // This part of logic depends on how book appointment times are stored/intended.
+          // If book appointments are just by day, this logic might need adjustment.
+          // For simplicity, let's assume book appointments also adhere to the hourly slots implicitly.
+          // Or, if book appointments don't have specific times, they don't block hourly slots.
+          // Given the current structure, we will only explicitly block slots for Sport/Health with startTime.
         }
-        // For other appointment types or if specific times aren't on subtypes,
-        // you might need a default assumption or a 'slotTime' field on the Appointment model.
-        // For now, we'll only consider Sport/Health start times if present.
 
         if (apptStartTime) {
           let h = apptStartTime.getHours();
@@ -108,64 +120,86 @@ export const appointmentsRouter = createTRPCRouter({
           const ampm = h >= 12 ? "PM" : "AM";
           h = h % 12;
           h = h ? h : 12;
-          const minutesStr = m < 10 ? "0" + m : m;
+          const minutesStr = m < 10 ? `0${m.toString()}` : m.toString();
           bookedTimeSlots.add(`${h}:${minutesStr} ${ampm}`);
         }
-      });
+      }
 
       const availableSlots = allPossibleSlots.filter(
         (slot) => !bookedTimeSlots.has(slot)
       );
-
-      // console.log(`Selected Date: ${selectedDate.toDateString()}`);
-      // console.log("All possible slots for the day:", allPossibleSlots);
-      // console.log("Booked time slots (from Sport/Health):", Array.from(bookedTimeSlots));
-      // console.log("Calculated available slots:", availableSlots);
-
       return availableSlots;
     }),
 
-  // --- Appointment Management --- (Section 3.5.1 PRD)
-  createAppointment: protectedProcedure // Student role typically, staff might also book for users
+  // --- Appointment Creation & Management ---
+  createAppointment: protectedProcedure
     .input(
       z.object({
-        appointmentType: appointmentTypeSchema, // Make this required
+        appointmentType: appointmentTypeSchema,
         appointmentDate: z.string().datetime(),
-        managedByStaffId: z.string().cuid().optional(), // Made optional
-        bookDetails: z.array(bookDetailSchema).optional(), // For Book appointments
+        managedByStaffId: z.string().cuid().optional(),
+        bookDetails: z.array(bookDetailSchema).optional(),
         sportType: z.string().min(1).optional(),
         healthType: z.string().min(1).optional(),
         startTime: z
           .string()
-          // Regex to match HH:MM format, also allowing single digit hour
-          .regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, {
+          .regex(/^([01]?\d|2[0-3]):([0-5]\d)$/, {
+            // HH:MM format
             message: "Invalid time format, expected HH:MM",
           })
           .optional(),
         endTime: z
           .string()
-          .regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, {
+          .regex(/^([01]?\d|2[0-3]):([0-5]\d)$/, {
             message: "Invalid time format, expected HH:MM",
           })
           .optional(),
-        notes: z.string().optional(), // Added notes field to input schema
+        notes: z.string().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
       const sessionUserId = ctx.session.user.id;
-      console.log(`Creating appointment for session user ID: ${sessionUserId}`);
-
-      // Verify the session user is a valid student
-      const studentProfile = await ctx.db.student.findUnique({
+      let studentProfile = await ctx.db.student.findUnique({
         where: { userId: sessionUserId },
       });
+
+      // If student profile doesn't exist, try to create it now.
       if (!studentProfile) {
-        console.error(`No student profile found for user ID: ${sessionUserId}`);
+        try {
+          studentProfile = await ctx.db.student.create({
+            data: {
+              userId: sessionUserId,
+              // managingAdminId can be left null or set to a default if applicable
+            },
+          });
+          console.log(
+            `[appointmentsRouter] Lazily created Student record for User ID: ${sessionUserId}`
+          );
+        } catch (error) {
+          console.error(
+            `[appointmentsRouter] Failed to lazily create Student record for User ID: ${sessionUserId}`,
+            error
+          );
+          // If creation fails here, it's a more persistent issue or a race condition not resolved.
+          throw new Error(
+            "Failed to set up your student profile. Please try again shortly or contact support if the issue persists."
+          );
+        }
+      }
+
+      // At this point, studentProfile should exist. If it's still null after attempted creation,
+      // the error above would have been thrown.
+      // We can safely assert studentProfile is not null here for type safety if needed,
+      // but the logic flow should ensure it.
+      // For robustness, one final check:
+      if (!studentProfile) {
+        // This case should ideally not be reached if the try/catch above works.
         throw new Error(
-          `Your user profile is not configured as a student. Please contact support.`
+          "Your user profile could not be configured as a student. Please contact support."
         );
       }
-      const studentIdToAssign = studentProfile.userId; // Use the verified student ID
+
+      const studentIdToAssign = studentProfile.userId;
 
       if (
         input.appointmentType === "Book" &&
@@ -189,102 +223,95 @@ export const appointmentsRouter = createTRPCRouter({
         throw new Error("Health type is required for health appointments.");
       }
 
+      // Convert HH:MM string to Date object for Sport/Health startTime/endTime
+      // These will be stored as Time type in DB, Prisma handles conversion.
+      // The date part of these Dates will be ignored by Prisma for DB Time type.
+      // let sportHealthStartTime: Date | undefined = undefined;
+      // let sportHealthEndTime: Date | undefined = undefined;
+
+      // if (input.startTime) {
+      //   const [hours, minutes] = input.startTime.split(":").map(Number);
+      //   sportHealthStartTime = new Date(1970, 0, 1, hours, minutes); // Date part is arbitrary
+      // }
+      // if (input.endTime) {
+      //   const [hours, minutes] = input.endTime.split(":").map(Number);
+      //   sportHealthEndTime = new Date(1970, 0, 1, hours, minutes); // Date part is arbitrary
+      // }
+
       let staffUserIdToAssign = input.managedByStaffId;
       if (!staffUserIdToAssign) {
-        console.log(
-          "managedByStaffId not provided, attempting to auto-assign."
-        );
         const firstStaffProfile = await ctx.db.staff.findFirst({
-          include: { user: { select: { id: true } } }, // Ensure user relation is valid
+          include: { user: { select: { id: true } } },
         });
-        if (!firstStaffProfile || !firstStaffProfile.user) {
-          console.error(
-            "No staff available in the database or staff user link broken."
-          );
+        if (!firstStaffProfile?.user) {
           throw new Error(
-            "Configuration error: No staff available to manage the appointment. Please contact administration."
+            "Configuration error: No staff available to manage the appointment."
           );
         }
-        staffUserIdToAssign = firstStaffProfile.userId;
-        console.log(
-          `Auto-assigned to staff user ID: ${staffUserIdToAssign}. Notes: ${
-            input.notes ?? "N/A"
-          }`
-        );
+        staffUserIdToAssign = firstStaffProfile.user.id;
       } else {
-        // If managedByStaffId is provided, verify it's a valid staff user
         const staffExists = await ctx.db.staff.findUnique({
           where: { userId: staffUserIdToAssign },
         });
         if (!staffExists) {
-          console.error(
-            `Provided managedByStaffId ${staffUserIdToAssign} does not correspond to a staff member.`
-          );
           throw new Error(
             `The selected staff member (ID: ${staffUserIdToAssign}) is not valid.`
           );
         }
-        console.log(`Using provided staff user ID: ${staffUserIdToAssign}`);
       }
 
       return ctx.db.$transaction(async (prisma) => {
-        console.log(
-          `Attempting to create appointment with studentId: ${studentIdToAssign}, staffId: ${staffUserIdToAssign}`
-        );
         const appointment = await prisma.appointment.create({
           data: {
             takenByStudentId: studentIdToAssign,
-            managedByStaffId: staffUserIdToAssign!,
+            managedByStaffId: staffUserIdToAssign,
             appointmentDate: new Date(input.appointmentDate),
             appointmentStatus: "Scheduled",
+            appointmentType: input.appointmentType,
             notes: input.notes,
           },
         });
-
-        let specificDetails: unknown = {};
 
         if (input.appointmentType === "Book" && input.bookDetails) {
           const borrowRecordsData = input.bookDetails.map((detail) => ({
             appointmentId: appointment.appointmentId,
             isbn: detail.isbn,
             borrowQuantity: detail.borrowQuantity,
-            borrowDate: new Date(input.appointmentDate), // borrowDate is on BookBorrowRecord
+            borrowDate: new Date(),
           }));
-
           await prisma.bookBorrowRecord.createMany({
             data: borrowRecordsData,
           });
-
+          // Adjust currentQuantity for each borrowed book
           for (const detail of input.bookDetails) {
-            const book = await prisma.book.findUniqueOrThrow({
-              where: { isbn: detail.isbn },
-            });
-            if (book.currentQuantity < detail.borrowQuantity) {
-              throw new Error(
-                `Not enough stock for book ISBN: ${detail.isbn}. Requested: ${detail.borrowQuantity}, Available: ${book.currentQuantity}`
-              );
-            }
             await prisma.book.update({
               where: { isbn: detail.isbn },
-              data: { currentQuantity: { decrement: detail.borrowQuantity } },
+              data: {
+                currentQuantity: {
+                  decrement: detail.borrowQuantity,
+                },
+              },
             });
           }
-          // We can't easily return specificDetails for book due to createMany
-          // Re-fetch if necessary or return just the main appointment
-          specificDetails = { type: "Book", count: input.bookDetails.length };
         } else if (
           input.appointmentType === "Sport" &&
           input.sportType &&
           input.startTime &&
           input.endTime
         ) {
-          specificDetails = await prisma.sportAppointment.create({
+          const [startHours, startMinutes] = input.startTime
+            .split(":")
+            .map(Number);
+          const sportStartTime = new Date(1970, 0, 1, startHours, startMinutes);
+          const [endHours, endMinutes] = input.endTime.split(":").map(Number);
+          const sportEndTime = new Date(1970, 0, 1, endHours, endMinutes);
+
+          await prisma.sportAppointment.create({
             data: {
               appointmentId: appointment.appointmentId,
               sportType: input.sportType,
-              startTime: new Date(`1970-01-01T${input.startTime}:00.000Z`), // Ensure ISO 8601 format for time
-              endTime: new Date(`1970-01-01T${input.endTime}:00.000Z`), // Ensure ISO 8601 format for time
-              // If SportAppointment schema has 'notes': sportNotes: input.notes,
+              startTime: sportStartTime,
+              endTime: sportEndTime,
             },
           });
         } else if (
@@ -293,465 +320,280 @@ export const appointmentsRouter = createTRPCRouter({
           input.startTime &&
           input.endTime
         ) {
-          specificDetails = await prisma.healthAppointment.create({
+          const [startHours, startMinutes] = input.startTime
+            .split(":")
+            .map(Number);
+          const healthStartTime = new Date(
+            1970,
+            0,
+            1,
+            startHours,
+            startMinutes
+          );
+          const [endHours, endMinutes] = input.endTime.split(":").map(Number);
+          const healthEndTime = new Date(1970, 0, 1, endHours, endMinutes);
+
+          await prisma.healthAppointment.create({
             data: {
               appointmentId: appointment.appointmentId,
               healthType: input.healthType,
-              startTime: new Date(`1970-01-01T${input.startTime}:00.000Z`),
-              endTime: new Date(`1970-01-01T${input.endTime}:00.000Z`),
-              // If HealthAppointment schema has 'notes': healthNotes: input.notes,
+              startTime: healthStartTime,
+              endTime: healthEndTime,
             },
           });
-        } else {
-          // Should not be reached if validation is correct
-          throw new Error("Invalid appointment type or missing details.");
         }
-
-        return { ...appointment, details: specificDetails };
+        return appointment;
       });
     }),
 
-  listMyAppointments: protectedProcedure
-    .input(
-      z.object({
-        status: appointmentStatusSchema.optional(),
-        take: z.number().int().optional().default(10),
-        skip: z.number().int().optional().default(0),
-      })
-    )
-    .query(async ({ ctx, input }) => {
-      const studentId = ctx.session.user.id;
-      const where: Prisma.AppointmentWhereInput = {
-        takenByStudentId: studentId,
-        appointmentStatus: input.status,
-      };
-      const appointments = await ctx.db.appointment.findMany({
-        where,
-        include: {
-          bookBorrowRecords: {
-            // Updated from bookAppointment
-            include: { book: true },
-          },
-          sportAppointment: true,
-          healthAppointment: true,
-          managedByStaff: {
-            include: {
-              user: {
-                select: { name: true, fName: true, lName: true, id: true },
-              },
-            },
-          },
-          takenByStudent: {
-            // Added to show student info (though it's "my" appointments)
-            include: {
-              user: {
-                select: { name: true, fName: true, lName: true, id: true },
-              },
-            },
-          },
-        },
-        orderBy: { appointmentDate: "desc" },
-        take: input.take,
-        skip: input.skip,
-      });
-      const totalAppointments = await ctx.db.appointment.count({ where });
-      return { appointments, totalCount: totalAppointments };
-    }),
+  listMyAppointments: protectedProcedure.query(async ({ ctx }) => {
+    const studentProfile = await ctx.db.student.findUnique({
+      where: { userId: ctx.session.user.id },
+    });
+    if (!studentProfile) {
+      // Or throw an error: throw new TRPCError({ code: 'NOT_FOUND', message: 'Student profile not found.' });
+      return [];
+    }
 
-  getAppointmentById: protectedProcedure
+    return ctx.db.appointment.findMany({
+      where: { takenByStudentId: studentProfile.userId },
+      orderBy: { appointmentDate: "desc" },
+      include: {
+        managedByStaff: { include: { user: true } },
+        bookBorrowRecords: { include: { book: true } },
+        sportAppointment: true,
+        healthAppointment: true,
+      },
+    });
+  }),
+
+  cancelAppointment: protectedProcedure
     .input(z.object({ appointmentId: z.string().uuid() }))
-    .query(async ({ ctx, input }) => {
-      const appointment = await ctx.db.appointment.findUniqueOrThrow({
+    .mutation(async ({ ctx, input }) => {
+      const appointment = await ctx.db.appointment.findUnique({
         where: { appointmentId: input.appointmentId },
-        include: {
-          bookBorrowRecords: { include: { book: true } },
-          sportAppointment: true,
-          healthAppointment: true,
-          managedByStaff: {
-            include: {
-              user: {
-                select: { name: true, fName: true, lName: true, id: true },
-              },
-            },
-          },
-          takenByStudent: {
-            include: {
-              user: {
-                select: { name: true, fName: true, lName: true, id: true },
-              },
-            },
-          },
-        },
+        include: { bookBorrowRecords: true },
       });
-      // Add authorization check: user must be owner, or staff/admin
-      const sessionUserId = ctx.session.user.id;
-      const isOwner = appointment.takenByStudentId === sessionUserId;
-      const userRoles = await ctx.db.user.findUnique({
-        where: { id: sessionUserId },
-        select: { admin: true, staff: true },
-      });
-      const isAdmin = !!userRoles?.admin;
-      const isStaff = !!userRoles?.staff;
 
-      if (!isOwner && !isAdmin && !isStaff) {
-        throw new Error("Not authorized to view this appointment.");
+      if (!appointment) {
+        throw new Error("Appointment not found.");
       }
-      return appointment;
+
+      // Check if the user is authorized to cancel this appointment
+      // (either the student who booked it or an admin/staff)
+      const isOwner = appointment.takenByStudentId === ctx.session.user.id;
+      const isAdminOrStaff =
+        ctx.session.user.isAdmin || ctx.session.user.isStaff;
+
+      if (!isOwner && !isAdminOrStaff) {
+        throw new Error("You are not authorized to cancel this appointment.");
+      }
+
+      if (appointment.appointmentStatus === "Cancelled") {
+        throw new Error("Appointment is already cancelled.");
+      }
+
+      return ctx.db.$transaction(async (prisma) => {
+        const updatedAppointment = await prisma.appointment.update({
+          where: { appointmentId: input.appointmentId },
+          data: { appointmentStatus: "Cancelled" },
+        });
+
+        // If it's a book appointment, restore the currentQuantity of books
+        if (
+          appointment.appointmentType === "Book" &&
+          appointment.bookBorrowRecords.length > 0
+        ) {
+          for (const record of appointment.bookBorrowRecords) {
+            await prisma.book.update({
+              where: { isbn: record.isbn },
+              data: {
+                currentQuantity: {
+                  increment: record.borrowQuantity,
+                },
+              },
+            });
+          }
+        }
+        return updatedAppointment;
+      });
     }),
 
+  // --- Admin Appointment Management ---
   adminListAllAppointments: adminProcedure
     .input(
       z.object({
         status: appointmentStatusSchema.optional(),
-        studentId: z.string().cuid().optional(),
-        staffId: z.string().cuid().optional(),
         dateFrom: z.string().datetime().optional(),
         dateTo: z.string().datetime().optional(),
-        take: z.number().int().optional().default(10),
-        skip: z.number().int().optional().default(0),
+        skip: z.number().int().min(0).default(0),
+        take: z.number().int().min(1).max(100).default(10),
       })
     )
     .query(async ({ ctx, input }) => {
-      const where: Prisma.AppointmentWhereInput = {
-        appointmentStatus: input.status,
-        takenByStudentId: input.studentId,
-        managedByStaffId: input.staffId,
-        AND:
-          input.dateFrom || input.dateTo
-            ? [
-                input.dateFrom
-                  ? { appointmentDate: { gte: new Date(input.dateFrom) } }
-                  : {},
-                input.dateTo
-                  ? { appointmentDate: { lte: new Date(input.dateTo) } }
-                  : {},
-              ]
-            : undefined,
-      };
-      const appointments = await ctx.db.appointment.findMany({
-        where,
-        include: {
-          bookBorrowRecords: { include: { book: true } },
-          sportAppointment: true,
-          healthAppointment: true,
-          managedByStaff: {
-            include: {
-              user: {
-                select: { name: true, fName: true, lName: true, id: true },
-              },
-            },
+      const where: Prisma.AppointmentWhereInput = {};
+      if (input.status) {
+        where.appointmentStatus = input.status;
+      }
+
+      // FIX: Refactor date filter construction
+      const dateFilter: Prisma.DateTimeFilter = {};
+      if (input.dateFrom) {
+        dateFilter.gte = new Date(input.dateFrom);
+      }
+      if (input.dateTo) {
+        const dateToObj = new Date(input.dateTo);
+        dateToObj.setHours(23, 59, 59, 999);
+        dateFilter.lte = dateToObj;
+      }
+      if (Object.keys(dateFilter).length > 0) {
+        where.appointmentDate = dateFilter;
+      }
+
+      const [appointments, totalCount] = await ctx.db.$transaction([
+        ctx.db.appointment.findMany({
+          where,
+          skip: input.skip,
+          take: input.take,
+          orderBy: { appointmentDate: "desc" },
+          include: {
+            takenByStudent: { include: { user: true } },
+            managedByStaff: { include: { user: true } },
+            bookBorrowRecords: { include: { book: true } },
+            sportAppointment: true,
+            healthAppointment: true,
           },
-          takenByStudent: {
-            include: {
-              user: {
-                select: { name: true, fName: true, lName: true, id: true },
-              },
-            },
-          },
-        },
-        orderBy: { appointmentDate: "desc" },
-        take: input.take,
-        skip: input.skip,
-      });
-      const totalAppointments = await ctx.db.appointment.count({ where });
-      return { appointments, totalCount: totalAppointments };
+        }),
+        ctx.db.appointment.count({ where }),
+      ]);
+      return { appointments, totalCount };
     }),
 
-  getAppointmentAvailability: protectedProcedure // Placeholder - complex logic
+  // --- Book Management (Admin only) ---
+  listBooks: adminProcedure
     .input(
       z.object({
-        appointmentType: appointmentTypeSchema.optional(),
-        date: z.string().datetime(),
-        staffId: z.string().cuid().optional(),
+        searchTerm: z.string().optional(),
+        skip: z.number().int().min(0).default(0),
+        take: z.number().int().min(1).max(100).default(10),
       })
     )
     .query(async ({ ctx, input }) => {
-      console.log(
-        `Checking availability for ${
-          input.appointmentType ?? "any service"
-        } on ${input.date}, staff: ${input.staffId ?? "any"}`
-      );
-      return [
-        { startTime: "10:00", endTime: "11:00", availableSlots: 5 },
-        { startTime: "11:00", endTime: "12:00", availableSlots: 3 },
-      ];
-    }),
-
-  updateAppointment: protectedProcedure
-    .input(
-      z.object({
-        appointmentId: z.string().uuid(),
-        status: appointmentStatusSchema.optional(),
-        appointmentDate: z.string().datetime().optional(),
-        managedByStaffId: z.string().cuid().optional(),
-        startTime: z
-          .string()
-          .regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/)
-          .optional(),
-        endTime: z
-          .string()
-          .regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/)
-          .optional(),
-        // Note: Updating bookDetails for a book appointment is complex (managing returns, new borrows)
-        // For simplicity, this is not included here. Typically, one might cancel and re-book.
-      })
-    )
-    .mutation(async ({ ctx, input }) => {
-      const { appointmentId, ...updateData } = input;
-      const existingAppointment = await ctx.db.appointment.findUniqueOrThrow({
-        where: { appointmentId },
-        include: {
-          bookBorrowRecords: true, // Updated
-          sportAppointment: true,
-          healthAppointment: true,
-        },
-      });
-
-      const sessionUserId = ctx.session.user.id;
-      const isStudentOwner =
-        existingAppointment.takenByStudentId === sessionUserId;
-      const userRoles = await ctx.db.user.findUnique({
-        where: { id: sessionUserId },
-        select: { admin: true, staff: true },
-      });
-      const isAdmin = !!userRoles?.admin;
-      const isStaff =
-        !!userRoles?.staff ||
-        existingAppointment.managedByStaffId === sessionUserId;
-
-      if (!isStaff && !isAdmin && !isStudentOwner) {
-        throw new Error("Not authorized to update this appointment.");
+      const where: Prisma.BookWhereInput = {};
+      if (input.searchTerm) {
+        where.OR = [
+          { title: { contains: input.searchTerm, mode: "insensitive" } },
+          { author: { contains: input.searchTerm, mode: "insensitive" } },
+          { isbn: { contains: input.searchTerm, mode: "insensitive" } },
+        ];
       }
 
-      if (!isStaff && !isAdmin && isStudentOwner) {
-        if (updateData.status && updateData.status !== "Cancelled") {
-          throw new Error("Students can only cancel their own appointments.");
-        }
-        if (
-          Object.keys(updateData).filter((key) => key !== "status").length > 0
-        ) {
-          throw new Error(
-            "Students can only update the status to 'Cancelled'."
-          );
-        }
-      }
-
-      return ctx.db.$transaction(async (prisma) => {
-        const appointmentUpdatePayload: Prisma.AppointmentUpdateInput = {};
-        if (updateData.status)
-          appointmentUpdatePayload.appointmentStatus = updateData.status;
-        if (updateData.appointmentDate)
-          appointmentUpdatePayload.appointmentDate = new Date(
-            updateData.appointmentDate
-          );
-        if (updateData.managedByStaffId && (isStaff || isAdmin)) {
-          appointmentUpdatePayload.managedByStaff = {
-            connect: { userId: updateData.managedByStaffId },
-          };
-        }
-
-        const updatedAppt = await prisma.appointment.update({
-          where: { appointmentId },
-          data: appointmentUpdatePayload,
-        });
-
-        if (
-          (updateData.status === "Cancelled" ||
-            updateData.status === "NoShow") &&
-          existingAppointment.bookBorrowRecords &&
-          existingAppointment.bookBorrowRecords.length > 0
-        ) {
-          for (const record of existingAppointment.bookBorrowRecords) {
-            await prisma.book.update({
-              where: { isbn: record.isbn },
-              data: { currentQuantity: { increment: record.borrowQuantity } },
-            });
-            // Optionally mark BookBorrowRecord as returned or handle it based on status
-            await prisma.bookBorrowRecord.update({
-              where: {
-                isbn_appointmentId: {
-                  isbn: record.isbn,
-                  appointmentId: record.appointmentId,
-                },
-              },
-              data: { returnDate: new Date() }, // Mark as returned if appointment cancelled/noshow
-            });
-          }
-        }
-
-        if (
-          updateData.startTime &&
-          updateData.endTime &&
-          (isStaff || isAdmin)
-        ) {
-          if (existingAppointment.sportAppointment) {
-            await prisma.sportAppointment.update({
-              where: { appointmentId },
-              data: {
-                startTime: new Date(`1970-01-01T${updateData.startTime}:00Z`),
-                endTime: new Date(`1970-01-01T${updateData.endTime}:00Z`),
-              },
-            });
-          } else if (existingAppointment.healthAppointment) {
-            await prisma.healthAppointment.update({
-              where: { appointmentId },
-              data: {
-                startTime: new Date(`1970-01-01T${updateData.startTime}:00Z`),
-                endTime: new Date(`1970-01-01T${updateData.endTime}:00Z`),
-              },
-            });
-          }
-        }
-        return updatedAppt;
-      });
+      const [books, totalCount] = await ctx.db.$transaction([
+        ctx.db.book.findMany({
+          where,
+          skip: input.skip,
+          take: input.take,
+          orderBy: { title: "asc" },
+        }),
+        ctx.db.book.count({ where }),
+      ]);
+      return { books, totalCount };
     }),
 
-  cancelAppointment: protectedProcedure
-    .input(z.object({ appointmentId: z.string().uuid() }))
-    .mutation(async ({ ctx, input }): Promise<Appointment> => {
-      // This just calls updateAppointment. Authorization is handled there.
-      const caller = appointmentsRouter.createCaller(ctx);
-      return caller.updateAppointment({
-        appointmentId: input.appointmentId,
-        status: "Cancelled",
-      });
-    }),
-
-  // --- Book Management (for Library) --- (Section 3.5.2 PRD)
-  createBook: staffProcedure // Or adminProcedure
-    .input(
-      z.object({
-        isbn: z.string().min(1),
-        title: z.string().min(1),
-        author: z.string().optional(),
-        quantityInStock: z.number().int().nonnegative(),
-      })
-    )
+  createBook: adminProcedure
+    .input(bookManagementItemSchema)
     .mutation(async ({ ctx, input }) => {
+      const existingBook = await ctx.db.book.findUnique({
+        where: { isbn: input.isbn },
+      });
+      if (existingBook) {
+        throw new Error(`Book with ISBN ${input.isbn} already exists.`);
+      }
       return ctx.db.book.create({
         data: {
-          ...input,
-          currentQuantity: input.quantityInStock, // Initially, current = total stock
+          isbn: input.isbn,
+          title: input.title,
+          author: input.author,
+          quantityInStock: input.quantityInStock,
+          currentQuantity: input.quantityInStock, // Initialize currentQuantity
         },
       });
     }),
 
-  listBooks: protectedProcedure
-    .input(
-      z.object({
-        query: z.string().optional(),
-        take: z.number().int().optional().default(10),
-        skip: z.number().int().optional().default(0),
-        onlyAvailable: z.boolean().optional(),
-      })
-    )
-    .query(async ({ ctx, input }) => {
-      const where: Prisma.BookWhereInput = {
-        OR: input.query
-          ? [
-              { title: { contains: input.query, mode: "insensitive" } },
-              { author: { contains: input.query, mode: "insensitive" } },
-              { isbn: { equals: input.query } },
-            ]
-          : undefined,
-        currentQuantity: input.onlyAvailable ? { gt: 0 } : undefined,
-      };
-      const books = await ctx.db.book.findMany({
-        where,
-        take: input.take,
-        skip: input.skip,
-        orderBy: { title: "asc" },
+  updateBook: adminProcedure
+    .input(bookManagementItemSchema) // ISBN is part of the schema and used as ID in where clause
+    .mutation(async ({ ctx, input }) => {
+      const bookToUpdate = await ctx.db.book.findUnique({
+        where: { isbn: input.isbn },
       });
-      const totalBooks = await ctx.db.book.count({ where });
-      return { books, totalCount: totalBooks };
+
+      if (!bookToUpdate) {
+        throw new Error(`Book with ISBN ${input.isbn} not found.`);
+      }
+
+      // Calculate how many books are currently effectively borrowed
+      const borrowedCount =
+        bookToUpdate.quantityInStock - bookToUpdate.currentQuantity;
+
+      // New current quantity will be the new total stock minus those borrowed
+      const newCurrentQuantity = input.quantityInStock - borrowedCount;
+
+      if (newCurrentQuantity < 0) {
+        throw new Error(
+          "Updated total stock cannot be less than the number of currently borrowed books."
+        );
+      }
+
+      return ctx.db.book.update({
+        where: { isbn: input.isbn },
+        data: {
+          title: input.title,
+          author: input.author,
+          quantityInStock: input.quantityInStock, // This is the new total stock
+          currentQuantity: newCurrentQuantity, // This is the new available stock
+        },
+      });
     }),
 
-  getBook: protectedProcedure
-    .input(z.object({ isbn: z.string() }))
-    .query(async ({ ctx, input }) => {
-      return ctx.db.book.findUniqueOrThrow({
-        where: { isbn: input.isbn },
-        include: {
-          borrowRecords: {
-            // Changed from bookAppointment
-            include: {
-              appointment: {
-                select: { appointmentDate: true, appointmentStatus: true },
+  deleteBook: adminProcedure
+    .input(z.object({ isbn: z.string().min(1, "ISBN is required") }))
+    .mutation(async ({ ctx, input }) => {
+      try {
+        // Check if the book is part of any active (non-cancelled, non-completed) appointments
+        const activeBorrows = await ctx.db.bookBorrowRecord.count({
+          where: {
+            isbn: input.isbn,
+            appointment: {
+              appointmentStatus: {
+                notIn: ["Cancelled", "Completed"],
               },
             },
           },
-        },
-      });
-    }),
+        });
 
-  updateBook: staffProcedure // Or adminProcedure
-    .input(
-      z.object({
-        isbn: z.string().min(1),
-        title: z.string().min(1).optional(),
-        author: z.string().optional(),
-        quantityInStock: z.number().int().nonnegative().optional(),
-        currentQuantity: z.number().int().nonnegative().optional(),
-      })
-    )
-    .mutation(async ({ ctx, input }) => {
-      const { isbn, ...data } = input;
-      // Ensure currentQuantity does not exceed quantityInStock if both are provided
-      if (
-        data.currentQuantity !== undefined &&
-        data.quantityInStock !== undefined &&
-        data.currentQuantity > data.quantityInStock
-      ) {
-        throw new Error("Current quantity cannot exceed quantity in stock.");
-      }
-      // If only currentQuantity is updated, check against existing quantityInStock
-      if (
-        data.currentQuantity !== undefined &&
-        data.quantityInStock === undefined
-      ) {
-        const book = await ctx.db.book.findUnique({ where: { isbn } });
-        if (book && data.currentQuantity > book.quantityInStock) {
-          throw new Error("Current quantity cannot exceed quantity in stock.");
-        }
-      }
-      // If only quantityInStock is updated, ensure it's not less than currentQuantity
-      if (
-        data.quantityInStock !== undefined &&
-        data.currentQuantity === undefined
-      ) {
-        const book = await ctx.db.book.findUnique({ where: { isbn } });
-        if (book && data.quantityInStock < book.currentQuantity) {
+        if (activeBorrows > 0) {
           throw new Error(
-            "Quantity in stock cannot be less than current quantity available."
+            "Cannot delete this book. It is part of active appointment borrow records. Please cancel or complete these appointments first."
           );
         }
-      }
-      return ctx.db.book.update({
-        where: { isbn },
-        data,
-      });
-    }),
 
-  deleteBook: adminProcedure // Typically more restricted than staff
-    .input(z.object({ isbn: z.string() }))
-    .mutation(async ({ ctx, input }) => {
-      // Add check: only delete if no active borrows (BookBorrowRecord where returnDate is null)
-      const activeBorrows = await ctx.db.bookBorrowRecord.count({
-        where: {
-          isbn: input.isbn,
-          returnDate: null, // Active borrow
-          appointment: {
-            appointmentStatus: {
-              notIn: ["Cancelled", "Completed", "NoShow"],
-            },
-          },
-        },
-      });
-      if (activeBorrows > 0) {
-        throw new Error(
-          "Cannot delete book with active borrows. Ensure all copies are returned and appointments are resolved."
-        );
+        // If no active borrows, proceed with deletion
+        return await ctx.db.book.delete({
+          where: { isbn: input.isbn },
+        });
+      } catch (e) {
+        if (e instanceof Prisma.PrismaClientKnownRequestError) {
+          // P2003 is foreign key constraint failure (Restrict)
+          // This might still occur if the above check is not exhaustive
+          // or if there are other relations with onDelete: Restrict
+          if (e.code === "P2003") {
+            throw new Error(
+              "Cannot delete this book due to existing related records (e.g., borrow history). Ensure all associated data is handled."
+            );
+          }
+        }
+        // Re-throw other errors, including the custom error from the check above
+        throw e;
       }
-      return ctx.db.book.delete({ where: { isbn: input.isbn } });
     }),
 });

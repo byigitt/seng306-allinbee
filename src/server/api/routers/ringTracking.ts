@@ -165,6 +165,69 @@ export const ringTrackingRouter = createTRPCRouter({
       return ctx.db.route.delete({ where: { routeId: input.routeId } });
     }),
 
+  updateRouteStations: staffProcedure
+    .input(
+      z.object({
+        routeId: z.string().uuid(),
+        stations: z.array(
+          z.object({
+            stationId: z.string().uuid(),
+            stopOrder: z.number().int().min(1), // Assuming 1-indexed stop order
+          })
+        ), // Allow empty array to remove all stations
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { routeId, stations } = input;
+
+      return ctx.db.$transaction(async (prisma) => {
+        // 1. Delete existing stations for this route
+        await prisma.routeStation.deleteMany({
+          where: { routeId },
+        });
+
+        // 2. Create new station assignments for this route
+        if (stations.length > 0) {
+          await prisma.routeStation.createMany({
+            data: stations.map((station) => ({
+              routeId,
+              stationId: station.stationId,
+              stopOrder: station.stopOrder,
+            })),
+          });
+        }
+
+        // 3. Return the updated route with its stations and departure times
+        return prisma.route.findUniqueOrThrow({
+          where: { routeId },
+          include: {
+            departureTimes: { orderBy: { departureTime: "asc" } },
+            routeStations: {
+              include: { station: true },
+              orderBy: { stopOrder: "asc" },
+            },
+            managedByStaff: {
+              include: {
+                staff: {
+                  include: {
+                    user: {
+                      select: {
+                        id: true,
+                        name: true,
+                        fName: true,
+                        lName: true,
+                      },
+                    },
+                  },
+                },
+              },
+              take: 5,
+            },
+          },
+        });
+      });
+    }),
+
   // TODO: Add procedures for RouteDepartureTime and RouteStation if needed separately
 
   // --- Station Management --- (Section 3.4.2 PRD)
@@ -249,48 +312,6 @@ export const ringTrackingRouter = createTRPCRouter({
         );
       }
       return ctx.db.station.delete({ where: { stationId: input.stationId } });
-    }),
-
-  // Procedure to link/update stations for a route (M:N RouteStation)
-  updateRouteStations: staffProcedure
-    .input(
-      z.object({
-        routeId: z.string().uuid(),
-        stations: z
-          .array(
-            z.object({
-              stationId: z.string().uuid(),
-              stopOrder: z.number().int().positive(),
-            })
-          )
-          .min(1), // Must provide at least one station
-      })
-    )
-    .mutation(async ({ ctx, input }) => {
-      const { routeId, stations } = input;
-      // Ensure unique stop orders
-      const stopOrders = stations.map((s) => s.stopOrder);
-      if (new Set(stopOrders).size !== stopOrders.length) {
-        throw new Error("Stop orders must be unique for a route.");
-      }
-
-      return ctx.db.$transaction(async (prisma) => {
-        // Delete existing station links for this route
-        await prisma.routeStation.deleteMany({ where: { routeId } });
-        // Create new links
-        await prisma.routeStation.createMany({
-          data: stations.map((s) => ({ ...s, routeId })),
-        });
-        return prisma.route.findUniqueOrThrow({
-          where: { routeId },
-          include: {
-            routeStations: {
-              include: { station: true },
-              orderBy: { stopOrder: "asc" },
-            },
-          },
-        });
-      });
     }),
 
   // --- Bus Management --- (Section 3.4.3 PRD)

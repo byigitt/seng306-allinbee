@@ -1,12 +1,12 @@
 import { z } from "zod";
-import { randomUUID } from "crypto";
+import { randomUUID } from "node:crypto";
 import {
   createTRPCRouter,
   protectedProcedure,
   staffProcedure,
   adminProcedure,
 } from "@/server/api/trpc";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 
 // Zod schema for positive numbers (can be used for Decimals if input is number-like)
 const positiveNumberSchema = z.preprocess(
@@ -14,204 +14,343 @@ const positiveNumberSchema = z.preprocess(
   z.number().positive()
 );
 
+// Zod schema for non-negative numbers, allowing zero
+const nonNegativeNumberSchema = z.preprocess(
+  (val) => Number.parseFloat(String(val)),
+  z.number().min(0)
+);
+
 // Helper to get today's date as YYYY-MM-DD string for composite key in Sale
 const getSaleDateKey = (date: Date): Date => {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
 };
 
+const MAX_FILE_SIZE = 5000000; // 5MB
+const ACCEPTED_IMAGE_TYPES = [
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "image/webp",
+];
+
+const DishWhereInputSchema = z.object({
+  name: z.string().optional(),
+  category: z.string().optional(),
+  // calories: z.number().optional(), // Example: Add other filterable fields
+});
+
+const MenuDishInputSchema = z.object({
+  dishId: z.string().uuid(),
+});
+
+const CreateMenuInputSchema = z.object({
+  menuName: z.string().min(1, "Menu name is required."),
+  date: z.coerce.date({
+    errorMap: (issue, { defaultError }) => ({
+      message:
+        issue.code === "invalid_date"
+          ? "Please enter a valid date."
+          : defaultError,
+    }),
+  }),
+  price: z.number().min(0.01, "Price must be at least 0.01."),
+  dishIds: z
+    .array(z.string().uuid())
+    .min(1, "Please select at least one dish."),
+});
+
+const UpdateMenuInputSchema = z.object({
+  menuId: z.string().uuid(),
+  menuName: z.string().min(1, "Menu name is required.").optional(),
+  date: z.coerce
+    .date({
+      errorMap: (issue, { defaultError }) => ({
+        message:
+          issue.code === "invalid_date"
+            ? "Please enter a valid date."
+            : defaultError,
+      }),
+    })
+    .optional(),
+  price: z.number().min(0.01, "Price must be at least 0.01.").optional(),
+  dishIds: z
+    .array(z.string().uuid())
+    .min(1, "Please select at least one dish.")
+    .optional(),
+});
+
+// Schemas for Dish Management
+const CreateDishInputSchema = z.object({
+  dishName: z.string().min(1, "Dish name is required."),
+  category: z.string().min(1, "Category is required."),
+  calories: z.number().int().positive().nullable().optional(),
+  price: z.number().min(0.01, "Price must be at least 0.01."),
+  available: z.boolean().default(true),
+});
+
+const UpdateDishInputSchema = z.object({
+  dishId: z.string().uuid(),
+  dishName: z.string().min(1, "Dish name is required.").optional(),
+  category: z.string().min(1, "Category is required.").optional(),
+  calories: z.number().int().positive().nullable().optional(),
+  price: z.number().min(0.01, "Price must be at least 0.01.").optional(),
+  available: z.boolean().optional(),
+});
+
 export const cafeteriaRouter = createTRPCRouter({
   // --- Dish Management ---
-  createDish: staffProcedure
-    .input(
-      z.object({
-        dishName: z.string().min(1),
-        calories: z.number().int().positive().optional(),
-      })
-    )
+  createDish: protectedProcedure
+    .input(CreateDishInputSchema)
     .mutation(async ({ ctx, input }) => {
-      return ctx.db.dish.create({ data: input });
+      return ctx.db.dish.create({
+        data: {
+          dishName: input.dishName,
+          category: input.category,
+          calories: input.calories,
+          price: new Prisma.Decimal(input.price),
+          available: input.available,
+        },
+      });
     }),
 
   listDishes: protectedProcedure
     .input(
       z.object({
-        filter: z.string().optional(),
-        take: z.number().int().optional().default(10),
-        skip: z.number().int().optional().default(0),
+        page: z.number().min(1).default(1),
+        limit: z.number().min(1).max(1000).default(10),
+        search: z.string().optional(),
+        // filter: DishWhereInputSchema.optional(), // Example for more complex filtering
       })
     )
     .query(async ({ ctx, input }) => {
+      const { page, limit, search } = input;
+      const where: Prisma.DishWhereInput = search
+        ? {
+            OR: [
+              { dishName: { contains: search, mode: "insensitive" } },
+              { category: { contains: search, mode: "insensitive" } },
+            ],
+          }
+        : {};
+
       const dishes = await ctx.db.dish.findMany({
-        where: { dishName: { contains: input.filter, mode: "insensitive" } },
-        take: input.take,
-        skip: input.skip,
+        where,
+        skip: (page - 1) * limit,
+        take: limit,
         orderBy: { dishName: "asc" },
       });
-      const totalCount = await ctx.db.dish.count({
-        where: { dishName: { contains: input.filter, mode: "insensitive" } },
-      });
-      return { dishes, totalCount };
+      const totalDishes = await ctx.db.dish.count({ where });
+      return {
+        dishes,
+        totalPages: Math.ceil(totalDishes / limit),
+        currentPage: page,
+      };
     }),
 
   getDish: protectedProcedure
     .input(z.object({ dishId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
-      return ctx.db.dish.findUniqueOrThrow({ where: { dishId: input.dishId } });
+      return ctx.db.dish.findUnique({ where: { dishId: input.dishId } });
     }),
 
-  updateDish: staffProcedure
-    .input(
-      z.object({
-        dishId: z.string().uuid(),
-        dishName: z.string().min(1).optional(),
-        calories: z.number().int().positive().optional(),
-      })
-    )
+  updateDish: protectedProcedure
+    .input(UpdateDishInputSchema)
     .mutation(async ({ ctx, input }) => {
-      const { dishId, ...data } = input;
-      return ctx.db.dish.update({ where: { dishId }, data });
+      const { dishId, ...dataToUpdate } = input;
+
+      const updatePayload: Prisma.DishUpdateInput = {};
+      if (dataToUpdate.dishName !== undefined)
+        updatePayload.dishName = dataToUpdate.dishName;
+      if (dataToUpdate.category !== undefined)
+        updatePayload.category = dataToUpdate.category;
+      if (dataToUpdate.calories !== undefined) {
+        updatePayload.calories = dataToUpdate.calories;
+      }
+      if (dataToUpdate.price !== undefined)
+        updatePayload.price = new Prisma.Decimal(dataToUpdate.price);
+      if (dataToUpdate.available !== undefined)
+        updatePayload.available = dataToUpdate.available;
+
+      return ctx.db.dish.update({
+        where: { dishId },
+        data: updatePayload,
+      });
     }),
 
-  deleteDish: staffProcedure
+  deleteDish: protectedProcedure
     .input(z.object({ dishId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
+      // Check if dish is part of any menu
       const isPartOfMenu = await ctx.db.menuDish.count({
         where: { dishId: input.dishId },
       });
       if (isPartOfMenu > 0) {
-        throw new Error("Cannot delete dish. It is part of one or more menus.");
+        throw new Error(
+          "Cannot delete dish. It is part of one or more menus. Please remove it from all menus first."
+        );
       }
       return ctx.db.dish.delete({ where: { dishId: input.dishId } });
     }),
 
   // --- Menu Management ---
-  createMenu: staffProcedure
-    .input(
-      z.object({
-        menuName: z.string().min(1),
-        price: positiveNumberSchema,
-        dishIds: z.array(z.string().uuid()).min(1),
-      })
-    )
+  createMenu: protectedProcedure
+    .input(CreateMenuInputSchema)
     .mutation(async ({ ctx, input }) => {
-      const { dishIds, menuName, price } = input;
+      const { menuName, date, price, dishIds } = input;
+      const staffUser = await ctx.db.staff.findUnique({
+        where: { userId: ctx.session.user.id },
+      });
+      if (!staffUser) {
+        throw new Error(
+          "User is not authorized or not properly configured as staff."
+        );
+      }
+
       return ctx.db.menu.create({
         data: {
-          managedByStaffId: ctx.session.user.id,
-          menuName: menuName,
-          price: price,
+          menuName,
+          date,
+          price: new Prisma.Decimal(price),
+          managedByStaffId: staffUser.userId, // Link to the staff member
           menuDishes: {
             create: dishIds.map((dishId) => ({
+              // Correctly create MenuDish entries
               dish: { connect: { dishId } },
             })),
           },
         },
-        include: { menuDishes: { include: { dish: true } } },
+        include: { menuDishes: { include: { dish: true } } }, // Corrected: menuDishes
       });
     }),
 
   listMenus: protectedProcedure
     .input(
       z.object({
-        filterByName: z.string().optional(),
-        take: z.number().int().optional().default(10),
-        skip: z.number().int().optional().default(0),
+        page: z.number().min(1).default(1),
+        limit: z.number().min(1).max(100).default(10),
+        search: z.string().optional(),
+        dateFrom: z.coerce.date().optional(),
+        dateTo: z.coerce.date().optional(),
       })
     )
     .query(async ({ ctx, input }) => {
-      const menus = await ctx.db.menu.findMany({
-        where: {
-          menuName: { contains: input.filterByName, mode: "insensitive" },
-        },
-        include: {
-          menuDishes: {
-            include: { dish: true },
-            orderBy: { dish: { dishName: "asc" } },
-          },
-          managedByStaff: {
-            include: {
-              user: {
-                select: {
-                  id: true,
-                  name: true,
-                  fName: true,
-                  lName: true,
-                },
+      const { page, limit, search, dateFrom, dateTo } = input;
+      const where: Prisma.MenuWhereInput = {};
+
+      if (search) {
+        where.OR = [
+          { menuName: { contains: search, mode: "insensitive" } },
+          {
+            menuDishes: {
+              some: {
+                dish: { dishName: { contains: search, mode: "insensitive" } },
               },
             },
           },
-          sales: { orderBy: { saleDate: "desc" } },
+        ];
+      }
+      if (dateFrom || dateTo) {
+        where.date = {};
+        if (dateFrom) where.date.gte = dateFrom;
+        if (dateTo) {
+          const endOfDayTo = new Date(dateTo);
+          endOfDayTo.setHours(23, 59, 59, 999);
+          where.date.lte = endOfDayTo;
+        }
+      }
+
+      const menus = await ctx.db.menu.findMany({
+        where,
+        include: {
+          menuDishes: { include: { dish: true } },
+          managedByStaff: {
+            include: {
+              user: { select: { name: true, fName: true, lName: true } },
+            },
+          },
         },
-        take: input.take,
-        skip: input.skip,
-        orderBy: { menuName: "asc" },
+        skip: (page - 1) * limit,
+        take: limit,
+        orderBy: { date: "desc" },
       });
-      const totalCount = await ctx.db.menu.count({
-        where: {
-          menuName: { contains: input.filterByName, mode: "insensitive" },
-        },
+      const totalMenus = await ctx.db.menu.count({
+        where,
       });
-      return { menus, totalCount };
+      return {
+        menus,
+        totalPages: Math.ceil(totalMenus / limit),
+        currentPage: page,
+      };
     }),
 
   getMenu: protectedProcedure
     .input(z.object({ menuId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
-      return ctx.db.menu.findUniqueOrThrow({
+      return ctx.db.menu.findUnique({
         where: { menuId: input.menuId },
         include: {
-          menuDishes: {
-            include: { dish: true },
-            orderBy: { dish: { dishName: "asc" } },
-          },
+          menuDishes: { include: { dish: true } }, // Corrected: menuDishes
           managedByStaff: {
             include: {
-              user: {
-                select: { name: true, id: true, fName: true, lName: true },
-              },
+              user: { select: { name: true, fName: true, lName: true } },
             },
           },
-          sales: { orderBy: { saleDate: "desc" } },
         },
       });
     }),
 
-  updateMenu: staffProcedure
-    .input(
-      z.object({
-        menuId: z.string().uuid(),
-        menuName: z.string().min(1).optional(),
-        price: positiveNumberSchema.optional(),
-        dishIds: z.array(z.string().uuid()).min(1).optional(),
-      })
-    )
+  updateMenu: protectedProcedure
+    .input(UpdateMenuInputSchema)
     .mutation(async ({ ctx, input }) => {
-      const { menuId, dishIds, menuName, price } = input;
-      return ctx.db.$transaction(async (prisma) => {
-        const dataToUpdate: Prisma.MenuUpdateInput = {};
-        if (menuName) dataToUpdate.menuName = menuName;
-        if (price) dataToUpdate.price = price;
+      const { menuId, menuName, date, price, dishIds } = input;
 
+      const staffUser = await ctx.db.staff.findUnique({
+        where: { userId: ctx.session.user.id },
+      });
+      if (!staffUser) {
+        throw new Error(
+          "User is not authorized or not properly configured as staff."
+        );
+      }
+
+      const updateData: Prisma.MenuUpdateInput = {};
+      if (menuName) updateData.menuName = menuName; // Corrected: menuName
+      if (date) updateData.date = date;
+      if (price) updateData.price = new Prisma.Decimal(price);
+
+      return ctx.db.$transaction(async (prisma) => {
         if (dishIds) {
-          await prisma.menuDish.deleteMany({ where: { menuId } });
-          dataToUpdate.menuDishes = {
-            create: dishIds.map((dishId) => ({
-              dish: { connect: { dishId } },
+          await prisma.menuDish.deleteMany({ where: { menuId: menuId } });
+          updateData.menuDishes = {
+            // Corrected: menuDishes
+            create: dishIds.map((dId) => ({
+              dish: { connect: { dishId: dId } },
             })),
           };
         }
         return prisma.menu.update({
-          where: { menuId },
-          data: dataToUpdate,
-          include: { menuDishes: { include: { dish: true } } },
+          where: { menuId }, // Corrected: where: { menuId: menuId } if menuId is the var name
+          data: updateData,
+          include: { menuDishes: { include: { dish: true } } }, // Corrected: menuDishes
         });
       });
     }),
 
-  deleteMenu: staffProcedure
+  deleteMenu: protectedProcedure
     .input(z.object({ menuId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
-      return ctx.db.menu.delete({ where: { menuId: input.menuId } });
+      // Check if user is staff
+      const staffUser = await ctx.db.staff.findUnique({
+        where: { userId: ctx.session.user.id },
+      });
+      if (!staffUser) {
+        throw new Error(
+          "User is not authorized or not properly configured as staff."
+        );
+      }
+
+      await ctx.db.menuDish.deleteMany({ where: { menuId: input.menuId } });
+      return ctx.db.menu.delete({ where: { menuId: input.menuId } }); // Corrected: menuId
     }),
 
   // --- DigitalCard Management ---
@@ -427,20 +566,17 @@ export const cafeteriaRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       const whereClause: Prisma.SaleWhereInput = {
         menuId: input.menuId,
-        AND: [],
       };
+      const andConditions: Prisma.SaleWhereInput[] = [];
+
       if (input.dateFrom) {
-        (whereClause.AND as Prisma.SaleWhereInput[]).push({
-          saleDate: { gte: new Date(input.dateFrom) },
-        });
+        andConditions.push({ saleDate: { gte: new Date(input.dateFrom) } });
       }
       if (input.dateTo) {
-        (whereClause.AND as Prisma.SaleWhereInput[]).push({
-          saleDate: { lte: new Date(input.dateTo) },
-        });
+        andConditions.push({ saleDate: { lte: new Date(input.dateTo) } });
       }
-      if (!(whereClause.AND as Prisma.SaleWhereInput[]).length) {
-        delete whereClause.AND;
+      if (andConditions.length > 0) {
+        whereClause.AND = andConditions;
       }
 
       const sales = await ctx.db.sale.findMany({
