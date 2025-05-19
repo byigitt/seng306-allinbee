@@ -59,9 +59,9 @@ function randomTimeString(): string {
 // Helper function to generate a DateTime object from a date and a time string (HH:MM:SS)
 function createDateTime(date: Date, timeString: string): Date {
   const [hoursStr, minutesStr, secondsStr] = timeString.split(":");
-  const hours = parseInt(hoursStr || "0", 10); // Add default for parseInt
-  const minutes = parseInt(minutesStr || "0", 10); // Add default for parseInt
-  const seconds = parseInt(secondsStr || "0", 10); // Add default for parseInt
+  const hours = Number.parseInt(hoursStr || "0", 10); // Add default for parseInt
+  const minutes = Number.parseInt(minutesStr || "0", 10); // Add default for parseInt
+  const seconds = Number.parseInt(secondsStr || "0", 10); // Add default for parseInt
   const newDate = new Date(date); // Clone the date part
   newDate.setHours(hours || 0, minutes || 0, seconds || 0, 0); // Set time part, default to 0 if NaN
   return newDate;
@@ -199,7 +199,7 @@ const healthTypes = [
 ];
 
 async function main() {
-  console.log(`Start seeding ...`);
+  console.log("Start seeding ...");
 
   await prisma.bookBorrowRecord
     .deleteMany()
@@ -514,13 +514,15 @@ async function main() {
   }
   for (const cardData of digitalCards) {
     // cardData is of type Prisma.DigitalCardCreateInput
-    await prisma.digitalCard.create({ data: cardData }).catch((e) =>
-      console.error(
-        `Failed to create digital card for ${
-          cardData.student!.connect!.userId! // Access userId via the student relation for the error message
-        }: ${e.message}`
-      )
-    );
+    await prisma.digitalCard
+      .create({ data: cardData })
+      .catch((e) =>
+        console.error(
+          `Failed to create digital card for ${
+            cardData.student?.connect?.userId ?? "UNKNOWN_STUDENT"
+          }: ${e.message}`
+        )
+      );
   }
   console.log(`Created ${digitalCards.length} digital cards`);
 
@@ -538,9 +540,9 @@ async function main() {
           rn !== campusLoopRouteName && !routes.some((r) => r.routeName === rn)
       )
     );
-    if (name) routes.push({ routeName: name });
+    if (name) routes.push({ routeId: uuidv4(), routeName: name });
   }
-  const createdRoutes: Prisma.RouteGetPayload<{}>[] = [];
+  const createdRoutes: Prisma.RouteGetPayload<null>[] = [];
   for (const routeData of routes) {
     await prisma.route
       .create({ data: routeData })
@@ -561,13 +563,13 @@ async function main() {
 
   const stations: Prisma.StationCreateInput[] = [];
   stations.push({
-    stationId: "STAT_A",
+    stationId: uuidv4(),
     stationName: "Library",
     stationLatitude: new Prisma.Decimal("34.052200"),
     stationLongitude: new Prisma.Decimal("-118.243700"),
   });
   stations.push({
-    stationId: "STAT_B",
+    stationId: uuidv4(),
     stationName: "Admin Bldg",
     stationLatitude: new Prisma.Decimal("34.053000"),
     stationLongitude: new Prisma.Decimal("-118.244500"),
@@ -578,6 +580,7 @@ async function main() {
     );
     if (name)
       stations.push({
+        stationId: uuidv4(),
         stationName: name,
         stationLatitude: new Prisma.Decimal(
           getRandomNumber(34000000, 35000000) / 1000000
@@ -587,7 +590,7 @@ async function main() {
         ),
       });
   }
-  const createdStations: Prisma.StationGetPayload<{}>[] = [];
+  const createdStations: Prisma.StationGetPayload<null>[] = [];
   for (const stationData of stations) {
     await prisma.station
       .create({ data: stationData })
@@ -672,15 +675,19 @@ async function main() {
   console.log(`Created ${routeStations.length} route-station links`);
 
   const dishes: Prisma.DishCreateInput[] = [];
-  dishes.push({ dishId: "DISH_VEG", dishName: "Vegan Burger", calories: 450 });
+  dishes.push({ dishId: uuidv4(), dishName: "Vegan Burger", calories: 450 });
   for (let i = 0; i < 20; i++) {
     const name = getRandomElement(
       dishNames.filter((dn) => !dishes.some((d) => d.dishName === dn))
     );
     if (name)
-      dishes.push({ dishName: name, calories: getRandomNumber(200, 1200) });
+      dishes.push({
+        dishId: uuidv4(),
+        dishName: name,
+        calories: getRandomNumber(200, 1200),
+      });
   }
-  const createdDishes: Prisma.DishGetPayload<{}>[] = [];
+  const createdDishes: Prisma.DishGetPayload<null>[] = [];
   for (const dishData of dishes) {
     await prisma.dish
       .create({ data: dishData })
@@ -704,7 +711,7 @@ async function main() {
       : getRandomElement(validStaffUserIds);
     if (staffForMenu001) {
       menus.push({
-        menuId: "MENU_001",
+        menuId: "MENU_001_UUID",
         menuName: "Lunch Combo",
         price: new Prisma.Decimal("12.99"),
         managedByStaff: { connect: { userId: staffForMenu001 } },
@@ -718,6 +725,7 @@ async function main() {
       const randomStaffForMenu = getRandomElement(validStaffUserIds);
       if (randomStaffForMenu) {
         menus.push({
+          menuId: uuidv4(),
           menuName: `${
             getRandomElement([
               "Daily",
@@ -738,7 +746,7 @@ async function main() {
       "No valid staff users found to manage menus. Limited menu creation."
     );
   }
-  const createdMenus: Prisma.MenuGetPayload<{}>[] = [];
+  const createdMenus: Prisma.MenuGetPayload<null>[] = [];
   for (const menuData of menus) {
     await prisma.menu
       .create({ data: menuData })
@@ -754,7 +762,7 @@ async function main() {
   console.log(`Created ${createdMenus.length} menus`);
 
   const menuDishes: Prisma.MenuDishCreateInput[] = [];
-  const menu001 = createdMenus.find((m) => m.menuId === "MENU_001");
+  const menu001 = createdMenus.find((m) => m.menuName === "Lunch Combo");
   if (menu001 && dishVeg) {
     menuDishes.push({
       menu: { connect: { menuId: menu001.menuId } },
@@ -842,7 +850,7 @@ async function main() {
           )
         );
     else if (
-      saleData.menu!.connect!.menuId! === "MENU_001" &&
+      saleData.menu?.connect?.menuId === menu001?.menuId &&
       (existing.saleDate as Date).getTime() ===
         (saleData.saleDate as Date).getTime()
     ) {
@@ -866,7 +874,9 @@ async function main() {
     const specificStudentCardForQR = fetchedStudentDigitalCards.find(
       (dc) => dc.userId === specificStudentIdForQR
     );
-    const menuForSpecificQR = createdMenus.find((m) => m.menuId === "MENU_001");
+    const menuForSpecificQR = createdMenus.find(
+      (m) => m.menuName === "Lunch Combo"
+    );
 
     if (
       specificStudentCardForQR &&
@@ -936,7 +946,7 @@ async function main() {
       ),
     });
   }
-  const createdBuses: Prisma.BusGetPayload<{}>[] = [];
+  const createdBuses: Prisma.BusGetPayload<null>[] = [];
   for (const busData of buses) {
     await prisma.bus
       .create({ data: busData })
@@ -956,7 +966,7 @@ async function main() {
     });
   } else {
     console.warn(
-      `Bus BUS_01 or Campus Loop route ID not found, skipping specific bus drive.`
+      "Bus BUS_01 or Campus Loop route ID not found, skipping specific bus drive."
     );
   }
   if (createdBuses.length > 0 && createdRoutes.length > 0) {
@@ -1064,7 +1074,7 @@ async function main() {
         });
       }
     }
-    const createdAppointments: Prisma.AppointmentGetPayload<{}>[] = [];
+    const createdAppointments: Prisma.AppointmentGetPayload<null>[] = [];
     for (const apptData of appointmentsData) {
       await prisma.appointment
         .create({ data: apptData })
@@ -1180,7 +1190,7 @@ async function main() {
         });
       }
     }
-    const createdBooks: Prisma.BookGetPayload<{}>[] = [];
+    const createdBooks: Prisma.BookGetPayload<null>[] = [];
     for (const bookData of books) {
       await prisma.book
         .create({ data: bookData })
@@ -1466,7 +1476,7 @@ async function main() {
     console.log("Skipping RouteDepartureTimes: No routes.");
   }
 
-  console.log(`Seeding finished.`);
+  console.log("Seeding finished.");
 }
 
 main()
