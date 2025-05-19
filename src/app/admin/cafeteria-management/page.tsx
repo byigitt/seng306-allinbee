@@ -11,7 +11,7 @@ import Link from "next/link";
 
 export default function AdminCafeteriaOverviewPage() {
 	return (
-		<div className="space-y-6">
+		<div className="space-y-6 overflow-x-hidden">
 			<div className="flex flex-col items-start gap-2 md:flex-row md:items-center md:justify-between">
 				<div className="flex items-center gap-4">
 					<Button variant="ghost" size="icon" asChild>
@@ -29,7 +29,7 @@ export default function AdminCafeteriaOverviewPage() {
 					</div>
 				</div>
 			</div>
-			<div className="grid gap-4 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+			<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
 				<Card>
 					<CardHeader>
 						<CardTitle className="flex items-center gap-2">
@@ -40,7 +40,7 @@ export default function AdminCafeteriaOverviewPage() {
 						</CardDescription>
 					</CardHeader>
 					<CardContent>
-						<Button asChild>
+						<Button asChild className="w-full sm:w-auto">
 							<Link href="/admin/cafeteria-management/dishes">
 								Go to Dishes
 							</Link>
@@ -57,7 +57,7 @@ export default function AdminCafeteriaOverviewPage() {
 						</CardDescription>
 					</CardHeader>
 					<CardContent>
-						<Button asChild>
+						<Button asChild className="w-full sm:w-auto">
 							<Link href="/admin/cafeteria-management/menus">Go to Menus</Link>
 						</Button>
 					</CardContent>
@@ -72,7 +72,7 @@ export default function AdminCafeteriaOverviewPage() {
 						</CardDescription>
 					</CardHeader>
 					<CardContent>
-						<Button asChild>
+						<Button asChild className="w-full sm:w-auto">
 							<Link href="/admin/cafeteria-management/sales">Go to Sales</Link>
 						</Button>
 					</CardContent>

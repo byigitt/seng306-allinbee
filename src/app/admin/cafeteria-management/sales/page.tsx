@@ -1,3 +1,5 @@
+"use client";
+
 import { DatePickerWithRange } from "@/app/_components/common/date-range-picker"; // Assuming this component exists or will be created
 import { Button } from "@/components/ui/button";
 import {
@@ -16,7 +18,9 @@ import {
 	TableRow,
 } from "@/components/ui/table";
 import { Download } from "lucide-react";
-import React from "react";
+import React, { useState } from "react";
+import type { DateRange } from "react-day-picker";
+import { addDays } from "date-fns";
 
 // Mock Data
 const mockSalesData = [
@@ -57,6 +61,11 @@ const mockSummaryStats = {
 };
 
 export default function SalesReportPage() {
+	const [dateRange, setDateRange] = useState<DateRange | undefined>({
+		from: addDays(new Date(), -7),
+		to: new Date(),
+	});
+
 	// TODO: Implement date range filtering and actual data fetching
 	return (
 		<div className="space-y-6 p-2 sm:p-0">
@@ -68,7 +77,7 @@ export default function SalesReportPage() {
 					</p>
 				</div>
 				<div className="flex w-full flex-col items-center gap-2 sm:w-auto sm:flex-row">
-					<DatePickerWithRange className="w-full sm:w-auto" />
+					<DatePickerWithRange className="w-full sm:w-auto" date={dateRange} onDateChange={setDateRange} />
 					<Button variant="outline" className="w-full sm:w-auto">
 						<Download className="mr-2 h-4 w-4" /> Export CSV
 					</Button>

@@ -1,144 +1,501 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
-import { Calendar } from "@/components/ui/calendar";
+import React, { useState, useMemo, useEffect } from "react";
+import { api } from "@/trpc/react";
+import { useForm, Controller } from "react-hook-form";
+import type { ControllerRenderProps } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { toast } from "sonner";
+import { PlusCircle, Edit, Trash2, Search, Utensils, CircleDollarSign, PackageOpen, CalendarIcon } from "lucide-react";
+import { format } from "date-fns";
+
 import {
-	Card,
-	CardContent,
-	CardDescription,
-	CardHeader,
-	CardTitle,
-} from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
+	Table,
+	TableBody,
+	TableCell,
+	TableHead,
+	TableHeader,
+	TableRow,
+} from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+	DialogClose,
+} from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { PlusCircle, Trash2 } from "lucide-react";
-import React from "react";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { cn } from "@/lib/utils";
 
-// Define an interface for the menu items
-interface MenuType {
-	id: string;
-	date: string; // Ensure date is a non-optional string
-	dishes: string[];
-}
+import type { AppRouter } from "@/server/api/root"; // Import AppRouter
+import type { inferRouterOutputs } from "@trpc/server"; // Import inferRouterOutputs
 
-// Mock data
-const mockDishesData = [
-	{ id: "d1", name: "Chicken Curry" },
-	{ id: "d2", name: "Lentil Soup" },
-	{ id: "d3", name: "Rice Pilaf" },
-	{ id: "d4", name: "Salad" },
-];
-const mockMenus: MenuType[] = [
-	{
-		id: "m1",
-		date: new Date().toISOString().split("T")[0] ?? "",
-		dishes: ["d1", "d2", "d3"],
-	},
-];
+// Zod schema for the menu form
+const menuFormSchema = z.object({
+	menuName: z.string().min(1, "Menu name is required."),
+	date: z.date({ required_error: "Menu date is required." }),
+	price: z.coerce.number().min(0, "Price must be non-negative."),
+	dishIds: z.array(z.string().uuid()).min(1, "At least one dish must be selected."),
+});
+
+type MenuFormValues = z.infer<typeof menuFormSchema>;
+
+// Use inferRouterOutputs for more robust type inference
+type RouterOutputs = inferRouterOutputs<AppRouter>;
+type MenuFromServer = RouterOutputs["cafeteria"]["listMenus"]["menus"][number];
+type DishFromServer = RouterOutputs["cafeteria"]["listDishes"]["dishes"][number];
 
 export default function ManageMenusPage() {
-	const [selectedDate, setSelectedDate] = React.useState<Date | undefined>(
-		new Date(),
+	const [searchTerm, setSearchTerm] = useState("");
+	const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
+	const [page, setPage] = useState(0); // 0-indexed for client-side state
+	const [pageSize] = useState(10);
+
+	const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+	const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+	const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+	const [selectedMenu, setSelectedMenu] = useState<MenuFromServer | null>(null);
+
+	const utils = api.useUtils();
+
+	const menusQuery = api.cafeteria.listMenus.useQuery(
+		{ search: debouncedSearchTerm, limit: pageSize, page: page + 1 }, // page is 1-indexed for backend
+		{ placeholderData: (previousData) => previousData }
 	);
-	// TODO: Implement CRUD for menus
-	return (
-		<div className="space-y-6">
-			<div className="flex flex-col items-start gap-2 md:flex-row md:items-center md:justify-between">
-				<div>
-					<h1 className="font-semibold text-xl md:text-2xl">Manage Menus</h1>
-					<p className="text-muted-foreground">
-						Create, publish, and update daily or weekly menus.
-					</p>
+
+	const dishesForSelectionQuery = api.cafeteria.listDishes.useQuery({ limit: 1000, page: 1 }); // Fetch all dishes for selection
+
+	const createMenuMutation = api.cafeteria.createMenu.useMutation({
+		onSuccess: (data) => {
+			toast.success(`Menu "${data.menuName}" created successfully!`);
+			utils.cafeteria.listMenus.invalidate();
+			setIsAddDialogOpen(false);
+			resetAddForm();
+		},
+		onError: (error) => {
+			toast.error(`Failed to create menu: ${error.message}`);
+		},
+	});
+
+	const updateMenuMutation = api.cafeteria.updateMenu.useMutation({
+		onSuccess: (data) => {
+			toast.success(`Menu "${data.menuName}" updated successfully!`);
+			utils.cafeteria.listMenus.invalidate();
+			setIsEditDialogOpen(false);
+			setSelectedMenu(null);
+		},
+		onError: (error) => {
+			toast.error(`Failed to update menu: ${error.message}`);
+		},
+	});
+
+	const deleteMenuMutation = api.cafeteria.deleteMenu.useMutation({
+		onSuccess: (_data, variables) => {
+			const menuName = selectedMenu?.menuName ?? `Menu ID ${variables.menuId.substring(0,8)}`;
+			toast.success(`Menu "${menuName}" deleted successfully!`);
+			utils.cafeteria.listMenus.invalidate();
+			setIsDeleteDialogOpen(false);
+			setSelectedMenu(null);
+		},
+		onError: (error) => {
+			toast.error(`Failed to delete menu: ${error.message}`);
+		},
+	});
+
+	const {
+		control: addFormControl,
+		handleSubmit: handleAddSubmit,
+		reset: resetAddForm,
+		formState: { errors: addFormErrors },
+	} = useForm<MenuFormValues>({
+		resolver: zodResolver(menuFormSchema),
+		defaultValues: { menuName: "", date: new Date(), price: 0, dishIds: [] },
+	});
+
+	const {
+		control: editFormControl,
+		handleSubmit: handleEditSubmit,
+		reset: resetEditForm,
+		formState: { errors: editFormErrors },
+		setValue: setEditFormValue,
+	} = useForm<MenuFormValues>({
+		resolver: zodResolver(menuFormSchema),
+	});
+
+	useEffect(() => {
+		const timerId = setTimeout(() => {
+			setDebouncedSearchTerm(searchTerm);
+			setPage(0); // Reset to first page on new search
+		}, 500);
+		return () => clearTimeout(timerId);
+	}, [searchTerm]);
+
+	const onSubmitAddMenu = (data: MenuFormValues) => {
+		createMenuMutation.mutate(data);
+	};
+
+	const handleOpenEditDialog = (menu: MenuFromServer) => {
+		setSelectedMenu(menu);
+		resetEditForm({
+			menuName: menu.menuName,
+			date: new Date(menu.date), // Ensure date is a Date object
+			price: Number(menu.price),
+			dishIds: menu.menuDishes.map((md) => md.dish.dishId),
+		});
+		setIsEditDialogOpen(true);
+	};
+
+	const onSubmitEditMenu = (data: MenuFormValues) => {
+		if (!selectedMenu) return;
+		updateMenuMutation.mutate({ menuId: selectedMenu.menuId, ...data });
+	};
+
+	const handleOpenDeleteDialog = (menu: MenuFromServer) => {
+		setSelectedMenu(menu);
+		setIsDeleteDialogOpen(true);
+	};
+
+	const confirmDeleteMenu = () => {
+		if (!selectedMenu) return;
+		deleteMenuMutation.mutate({ menuId: selectedMenu.menuId });
+	};
+
+	const totalPages = menusQuery.data?.totalPages ?? 0;
+
+	useEffect(() => {
+		if (menusQuery.error) {
+			toast.error(`Failed to load menus: ${menusQuery.error.message}`);
+		}
+		if (dishesForSelectionQuery.error) {
+			toast.error(`Failed to load dishes for selection: ${dishesForSelectionQuery.error.message}`);
+		}
+	}, [menusQuery.error, dishesForSelectionQuery.error]);
+
+	const renderDishSelection = (field: ControllerRenderProps<MenuFormValues, "dishIds">, allDishes: DishFromServer[] | undefined) => (
+		<ScrollArea className="h-40 w-full rounded-md border p-2 col-span-full sm:col-span-3">
+			{(allDishes ?? []).map((dish) => (
+				<div key={dish.dishId} className="flex items-center space-x-2 mb-1">
+					<Checkbox
+						id={`dish-${dish.dishId}-${field.name}`} // Ensure unique ID for add/edit forms
+						checked={field.value?.includes(dish.dishId)}
+						onCheckedChange={(checked) => {
+							return checked
+								? field.onChange([...(field.value ?? []), dish.dishId])
+								: field.onChange((field.value ?? []).filter((id: string) => id !== dish.dishId));
+						}}
+					/>
+					<Label htmlFor={`dish-${dish.dishId}-${field.name}`} className="text-sm font-normal cursor-pointer">
+						{dish.dishName} (₺{Number(dish.price).toFixed(2)})
+					</Label>
 				</div>
-				<Button className="w-full sm:w-auto">
-					<PlusCircle className="mr-2 h-4 w-4" /> Create New Menu
+			))}
+			{(allDishes ?? []).length === 0 && <p className="text-sm text-muted-foreground">No dishes available.</p>}
+		</ScrollArea>
+	);
+
+	return (
+		<div className="container mx-auto py-6 px-2 sm:px-4 md:px-6">
+			<div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-4 sm:gap-0">
+				<h1 className="text-2xl sm:text-3xl font-bold">Manage Menus</h1>
+				<Button onClick={() => { resetAddForm({ menuName: "", date: new Date(), price: 0, dishIds: [] }); setIsAddDialogOpen(true); }} className="flex items-center gap-2 w-full sm:w-auto">
+					<PlusCircle className="h-5 w-5" />
+					Add New Menu
 				</Button>
 			</div>
 
-			<div className="grid gap-6 md:grid-cols-3">
-				<Card className="md:col-span-1">
-					<CardHeader>
-						<CardTitle className="text-lg">Select Date / Create Menu</CardTitle>
-					</CardHeader>
-					<CardContent className="space-y-4 p-4">
-						<div className="flex justify-center">
+			<div className="mb-4">
+				<div className="relative">
+					<Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+					<Input
+						type="search"
+						placeholder="Search menus by name or dish..."
+						className="pl-8 w-full md:w-2/3 lg:w-1/3"
+						value={searchTerm}
+						onChange={(e) => setSearchTerm(e.target.value)}
+					/>
+				</div>
+			</div>
+
+			{/* Add Menu Dialog */} 
+			<Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+				<DialogContent className="sm:max-w-lg w-[90%] sm:w-full rounded-lg">
+					<DialogHeader>
+						<DialogTitle>Add New Menu</DialogTitle>
+						<DialogDescription>Fill in the details for the new menu and select dishes.</DialogDescription>
+					</DialogHeader>
+					<form onSubmit={handleAddSubmit(onSubmitAddMenu)} className="grid gap-4 py-4">
+						<Controller
+							name="menuName"
+							control={addFormControl}
+							render={({ field }) => (
+								<div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-2 sm:gap-4">
+									<Label htmlFor="menuNameAdd" className="sm:text-right">Name</Label>
+									<Input id="menuNameAdd" {...field} className="col-span-1 sm:col-span-3" />
+								</div>
+							)}
+						/>
+						{addFormErrors.menuName && <p className="text-red-500 text-xs sm:col-span-4 sm:text-right -mt-2">{addFormErrors.menuName.message}</p>}
+						
+						<Controller
+							name="date"
+							control={addFormControl}
+							render={({ field }) => (
+								<div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-2 sm:gap-4">
+									<Label htmlFor="menuDateAdd" className="sm:text-right">Date</Label>
+									<Popover>
+										<PopoverTrigger asChild>
+											<Button
+												variant={"outline"}
+												className={cn(
+													"col-span-1 sm:col-span-3 justify-start text-left font-normal",
+													!field.value && "text-muted-foreground"
+												)}
+											>
+												<CalendarIcon className="mr-2 h-4 w-4" />
+												{field.value ? format(field.value, "PPP") : <span>Pick a date</span>}
+											</Button>
+										</PopoverTrigger>
+										<PopoverContent className="w-auto p-0">
 							<Calendar
 								mode="single"
-								selected={selectedDate}
-								onSelect={setSelectedDate}
-								className="rounded-md border"
+												selected={field.value}
+												onSelect={field.onChange}
+												initialFocus
+											/>
+										</PopoverContent>
+									</Popover>
+						</div>
+							)}
+						/>
+						{addFormErrors.date && <p className="text-red-500 text-xs sm:col-span-4 sm:text-right -mt-2">{addFormErrors.date.message}</p>}
+
+						<Controller
+							name="price"
+							control={addFormControl}
+							render={({ field }) => (
+								<div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-2 sm:gap-4">
+									<Label htmlFor="priceAdd" className="sm:text-right">Price (₺)</Label>
+									<Input id="priceAdd" type="number" step="0.01" {...field} onChange={e => field.onChange(Number.parseFloat(e.target.value))} className="col-span-1 sm:col-span-3"/>
+								</div>
+							)}
+						/>
+						{addFormErrors.price && <p className="text-red-500 text-xs sm:col-span-4 sm:text-right -mt-2">{addFormErrors.price.message}</p>}
+						
+						<div className="grid grid-cols-1 sm:grid-cols-4 items-start gap-2 sm:gap-4">
+							<Label className="sm:text-right pt-2">Dishes</Label>
+							<Controller
+								name="dishIds"
+								control={addFormControl}
+								render={({ field }) => renderDishSelection(field, dishesForSelectionQuery.data?.dishes)}
 							/>
 						</div>
-						<h3 className="pt-4 font-medium text-base md:text-lg">
-							Select Dishes for{" "}
-							{selectedDate?.toLocaleDateString() || "selected date"}:
-						</h3>
-						<div className="max-h-60 space-y-2 overflow-y-auto pr-2">
-							{mockDishesData.map((dish) => (
-								<div key={dish.id} className="flex items-center space-x-2">
-									<Checkbox id={`dish-${dish.id}`} />
-									<Label htmlFor={`dish-${dish.id}`} className="font-normal">
-										{dish.name}
-									</Label>
-								</div>
-							))}
-						</div>
-						<Button className="mt-2 w-full">
-							Save Menu for {selectedDate?.toLocaleDateString() || "Date"}
-						</Button>
-					</CardContent>
-				</Card>
+						 {addFormErrors.dishIds && <p className="text-red-500 text-xs sm:col-span-4 sm:text-right -mt-2">{addFormErrors.dishIds.message}</p>}
 
-				<Card className="mb-[80px] md:col-span-2">
-					<CardHeader className="p-4">
-						<CardTitle className="text-lg">Existing Menus</CardTitle>
-						<CardDescription>
-							Overview of currently defined menus.
-						</CardDescription>
-					</CardHeader>
-					<CardContent>
-						{mockMenus.length > 0 ? (
-							<ul className="space-y-3">
-								{mockMenus.map((menu) => (
-									<li
-										key={menu.id}
-										className="flex items-center justify-between rounded-lg border p-3"
-									>
-										<div>
-											<p className="font-medium">
-												Menu for:{" "}
-												{new Date(menu.date).toLocaleDateString("en-US", {
-													dateStyle: "long",
-												})}
-											</p>
-											<p className="text-muted-foreground text-sm">
-												Dishes:{" "}
-												{menu.dishes
-													.map(
-														(dId) =>
-															mockDishesData.find((d) => d.id === dId)?.name ||
-															"N/A",
-													)
-													.join(", ")}
-											</p>
+						<DialogFooter className="flex flex-col sm:flex-row gap-2 sm:gap-0 pt-2">
+							<DialogClose asChild><Button type="button" variant="outline" className="w-full sm:w-auto">Cancel</Button></DialogClose>
+							<Button type="submit" disabled={createMenuMutation.isPending || dishesForSelectionQuery.isLoading} className="w-full sm:w-auto">
+								{createMenuMutation.isPending ? "Adding..." : "Add Menu"}
+						</Button>
+						</DialogFooter>
+					</form>
+				</DialogContent>
+			</Dialog>
+
+			{/* Edit Menu Dialog */} 
+			{selectedMenu && (
+				<Dialog open={isEditDialogOpen} onOpenChange={(isOpen) => { setIsEditDialogOpen(isOpen); if (!isOpen) setSelectedMenu(null); }}>
+					<DialogContent className="sm:max-w-lg w-[90%] sm:w-full rounded-lg">
+						<DialogHeader>
+							<DialogTitle>Edit Menu</DialogTitle>
+							<DialogDescription>Update details for &quot;{selectedMenu.menuName}&quot;.</DialogDescription>
+						</DialogHeader>
+						<form onSubmit={handleEditSubmit(onSubmitEditMenu)} className="grid gap-4 py-4">
+							<Controller
+								name="menuName"
+								control={editFormControl}
+								render={({ field }) => (
+									<div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-2 sm:gap-4">
+										<Label htmlFor="menuNameEdit" className="sm:text-right">Name</Label>
+										<Input id="menuNameEdit" {...field} className="col-span-1 sm:col-span-3" />
+									</div>
+								)}
+							/>
+							{editFormErrors.menuName && <p className="text-red-500 text-xs sm:col-span-4 sm:text-right -mt-2">{editFormErrors.menuName.message}</p>}
+							
+							<Controller
+								name="date"
+								control={editFormControl}
+								render={({ field }) => (
+									<div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-2 sm:gap-4">
+										<Label htmlFor="menuDateEdit" className="sm:text-right">Date</Label>
+										<Popover>
+											<PopoverTrigger asChild>
+												<Button
+													variant={"outline"}
+													className={cn(
+														"col-span-1 sm:col-span-3 justify-start text-left font-normal",
+														!field.value && "text-muted-foreground"
+													)}
+												>
+													<CalendarIcon className="mr-2 h-4 w-4" />
+													{field.value ? format(field.value, "PPP") : <span>Pick a date</span>}
+												</Button>
+											</PopoverTrigger>
+											<PopoverContent className="w-auto p-0">
+												<Calendar
+													mode="single"
+													selected={field.value}
+													onSelect={field.onChange}
+													initialFocus
+												/>
+											</PopoverContent>
+										</Popover>
+									</div>
+								)}
+							/>
+							{editFormErrors.date && <p className="text-red-500 text-xs sm:col-span-4 sm:text-right -mt-2">{editFormErrors.date.message}</p>}
+
+							<Controller
+								name="price"
+								control={editFormControl}
+								render={({ field }) => (
+									<div className="grid grid-cols-1 sm:grid-cols-4 items-center gap-2 sm:gap-4">
+										<Label htmlFor="priceEdit" className="sm:text-right">Price (₺)</Label>
+										<Input id="priceEdit" type="number" step="0.01" {...field} className="col-span-1 sm:col-span-3" onChange={e => field.onChange(Number.parseFloat(e.target.value))} />
+									</div>
+								)}
+							/>
+							{editFormErrors.price && <p className="text-red-500 text-xs sm:col-span-4 sm:text-right -mt-2">{editFormErrors.price.message}</p>}
+
+							<div className="grid grid-cols-1 sm:grid-cols-4 items-start gap-2 sm:gap-4">
+								<Label className="sm:text-right pt-2">Dishes</Label>
+								 <Controller
+									name="dishIds"
+									control={editFormControl}
+									render={({ field }) => renderDishSelection(field, dishesForSelectionQuery.data?.dishes)}
+								/>
 										</div>
-										<div className="flex gap-2">
-											<Button variant="outline" size="sm">
-												Edit
+							{editFormErrors.dishIds && <p className="text-red-500 text-xs sm:col-span-4 sm:text-right -mt-2">{editFormErrors.dishIds.message}</p>}
+
+							<DialogFooter className="flex flex-col sm:flex-row gap-2 sm:gap-0 pt-2">
+								<DialogClose asChild><Button type="button" variant="outline" className="w-full sm:w-auto">Cancel</Button></DialogClose>
+								<Button type="submit" disabled={updateMenuMutation.isPending || dishesForSelectionQuery.isLoading} className="w-full sm:w-auto">
+									{updateMenuMutation.isPending ? "Saving..." : "Save Changes"}
 											</Button>
-											<Button variant="destructive" size="sm">
-												<Trash2 className="h-4 w-4" />
+							</DialogFooter>
+						</form>
+					</DialogContent>
+				</Dialog>
+			)}
+
+			{/* Delete Menu Dialog */} 
+			{selectedMenu && (
+				<Dialog open={isDeleteDialogOpen} onOpenChange={(isOpen) => { setIsDeleteDialogOpen(isOpen); if (!isOpen) setSelectedMenu(null); }}>
+					<DialogContent className="sm:max-w-xs w-[90%] sm:w-full rounded-lg">
+						<DialogHeader>
+							<DialogTitle>Delete Menu</DialogTitle>
+							<DialogDescription>
+								Are you sure you want to delete &quot;{selectedMenu.menuName}&quot;? This action cannot be undone.
+							</DialogDescription>
+						</DialogHeader>
+						<DialogFooter className="sm:justify-start mt-4 flex flex-col sm:flex-row gap-2 sm:gap-0">
+							<DialogClose asChild><Button type="button" variant="outline" className="w-full sm:w-auto">Cancel</Button></DialogClose>
+							<Button variant="destructive" onClick={confirmDeleteMenu} disabled={deleteMenuMutation.isPending} className="w-full sm:w-auto">
+								{deleteMenuMutation.isPending ? "Deleting..." : "Delete Menu"}
 											</Button>
-										</div>
-									</li>
-								))}
+						</DialogFooter>
+					</DialogContent>
+				</Dialog>
+			)}
+
+			<div className="border rounded-lg overflow-x-auto">
+				<Table className="min-w-full">
+					<TableHeader>
+						<TableRow>
+							<TableHead className="py-2 px-2 md:px-3"><Utensils className="inline-block mr-1 h-4 w-4 text-muted-foreground"/>Menu Name</TableHead>
+							<TableHead className="py-2 px-2 md:px-3 hidden sm:table-cell"><CalendarIcon className="inline-block mr-1 h-4 w-4 text-muted-foreground"/>Date</TableHead>
+							<TableHead className="py-2 px-2 md:px-3 text-right hidden xs:table-cell"><CircleDollarSign className="inline-block mr-1 h-4 w-4 text-muted-foreground"/>Price</TableHead>
+							<TableHead className="py-2 px-2 md:px-3"><PackageOpen className="inline-block mr-1 h-4 w-4 text-muted-foreground"/>Dishes</TableHead>
+							<TableHead className="py-2 px-2 md:px-3 hidden md:table-cell">Managed By</TableHead>
+							<TableHead className="py-2 px-2 md:px-3 text-center">Actions</TableHead>
+						</TableRow>
+					</TableHeader>
+					<TableBody>
+						{menusQuery.isLoading && !menusQuery.isPlaceholderData && (
+							<TableRow><TableCell colSpan={6} className="text-center py-10 text-muted-foreground">Loading menus...</TableCell></TableRow>
+						)}
+						{menusQuery.isError && (
+							<TableRow><TableCell colSpan={6} className="text-center py-10 text-red-500">Error loading menus. Try refreshing.</TableCell></TableRow>
+						)}
+						{menusQuery.data?.menus.length === 0 && !menusQuery.isLoading && !menusQuery.isError && (
+							<TableRow><TableCell colSpan={6} className="text-center py-10 text-muted-foreground">No menus found.</TableCell></TableRow>
+						)}
+						{menusQuery.data?.menus.map((menu) => (
+							<TableRow key={menu.menuId} className={`${menusQuery.isPlaceholderData ? "opacity-50" : ""} hover:bg-muted/50`}>
+								<TableCell className="font-medium py-2 px-2 md:px-3 whitespace-nowrap">{menu.menuName}</TableCell>
+								<TableCell className="py-2 px-2 md:px-3 hidden sm:table-cell">{format(new Date(menu.date), "PPP")}</TableCell>
+								<TableCell className="py-2 px-2 md:px-3 text-right hidden xs:table-cell">₺{Number(menu.price).toFixed(2)}</TableCell>
+								<TableCell className="py-2 px-2 md:px-3">
+									{menu.menuDishes.length > 0 ? (
+										<ul className="list-disc list-inside text-xs">
+											{menu.menuDishes.slice(0, 2).map((md) => <li key={md.dish.dishId}>{md.dish.dishName}</li>)}
+											{menu.menuDishes.length > 2 && <li className="text-muted-foreground">...and {menu.menuDishes.length - 2} more</li>}
 							</ul>
 						) : (
-							<p className="text-muted-foreground">No menus created yet.</p>
-						)}
-					</CardContent>
-				</Card>
+										<span className="text-xs text-muted-foreground">No dishes</span>
+									)}
+								</TableCell>
+								<TableCell className="text-xs py-2 px-2 md:px-3 hidden md:table-cell">
+									{menu.managedByStaff.user.name ?? `${menu.managedByStaff.user.fName} ${menu.managedByStaff.user.lName}`}
+								</TableCell>
+								<TableCell className="py-2 px-2 md:px-3 text-center whitespace-nowrap">
+									<Button variant="ghost" size="icon" onClick={() => handleOpenEditDialog(menu)} className="mr-1" aria-label="Edit menu">
+										<Edit className="h-4 w-4" />
+									</Button>
+									<Button variant="ghost" size="icon" onClick={() => handleOpenDeleteDialog(menu)} className="text-destructive hover:text-destructive" aria-label="Delete menu">
+										<Trash2 className="h-4 w-4" />
+									</Button>
+								</TableCell>
+							</TableRow>
+						))}
+					</TableBody>
+				</Table>
 			</div>
+
+			{totalPages > 0 && ( // Show pagination only if there are pages
+				<div className="flex flex-col sm:flex-row items-center justify-center sm:justify-end space-y-2 sm:space-y-0 sm:space-x-2 py-4 mb-[80px]">
+					<div className="flex space-x-2">
+						<Button
+							variant="outline"
+							size="sm"
+							onClick={() => setPage((prev) => Math.max(0, prev - 1))}
+							disabled={page === 0 || menusQuery.isFetching}
+						>
+							Previous
+						</Button>
+						<Button
+							variant="outline"
+							size="sm"
+							onClick={() => setPage((prev) => Math.min(totalPages - 1, prev + 1))}
+							disabled={page >= totalPages - 1 || menusQuery.isFetching} // page is 0-indexed
+						>
+							Next
+						</Button>
+					</div>
+					<span className="text-sm text-muted-foreground pt-2 sm:pt-0">
+						Page {page + 1} of {totalPages}
+					</span>
+				</div>
+			)}
 		</div>
 	);
 }
