@@ -2,6 +2,7 @@
 
 import { Bus, CalendarCheck, Home, Package2, Utensils } from "lucide-react"; // Simplified imports, MenuIcon is in AdminPageHeader
 import Link from "next/link";
+import Image from "next/image";
 
 import { cn } from "@/lib/utils";
 import { usePathname } from "next/navigation";
@@ -80,7 +81,7 @@ export default function AdminLayout({
 							href="/admin"
 							className="flex items-center gap-2 font-semibold"
 						>
-							<Package2 className="h-6 w-6" />
+							<Image src="/logo.png" alt="Logo" width={32} height={32} className="h-8 w-8 object-contain" />
 							<span className="">AllInBee Admin</span>
 						</Link>
 					</div>

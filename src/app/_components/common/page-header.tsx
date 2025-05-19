@@ -8,6 +8,7 @@ import {
 } from "@/components/ui/sheet";
 import { Bus, Calendar, Menu, UserCircle, Utensils } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 
 interface PageHeaderProps {
 	title: string;
@@ -65,9 +66,10 @@ export default function PageHeader({ title }: PageHeaderProps) {
 					</nav>
 				</SheetContent>
 			</Sheet>
-			<h1 className="flex-1 shrink-0 whitespace-nowrap font-semibold text-xl tracking-tight sm:grow-0">
-				{title}
-			</h1>
+			<div className="flex items-center gap-2 flex-1 shrink-0">
+				<Image src="/logo.png" alt="Logo" width={32} height={32} className="h-8 w-8 object-contain" />
+				<h1 className="whitespace-nowrap font-semibold text-xl tracking-tight sm:grow-0">{title}</h1>
+			</div>
 			<div className="ml-auto flex items-center gap-2">
 				<Link href="/profile">
 					<Button

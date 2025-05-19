@@ -13,6 +13,7 @@ import { Menu as MenuIcon, Package2 } from "lucide-react"; // Using MenuIcon to 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import React from "react";
+import Image from "next/image";
 
 interface AdminNavItem {
 	href: string;
@@ -48,7 +49,7 @@ export default function AdminPageHeader({
 							href="/admin"
 							className="flex items-center gap-2 rounded-full bg-primary px-3 py-2 font-bold text-lg text-primary-foreground shadow"
 						>
-							<Package2 className="h-5 w-5" />
+							<Image src="/logo.png" alt="Logo" width={24} height={24} className="h-6 w-6 object-contain" />
 							<span className="text-sm">AllInBee Admin</span>
 						</Link>
 						<SheetClose asChild>
@@ -96,9 +97,18 @@ export default function AdminPageHeader({
 							</React.Fragment>
 						))}
 					</nav>
+					<div className="px-4 py-2 border-t bg-muted/30">
+						<Link
+							href="/"
+							className="inline-block w-full rounded-md bg-primary px-3 py-2 text-center text-sm font-semibold text-primary-foreground shadow hover:bg-primary/90 transition"
+						>
+							← Back to Main Menu
+						</Link>
+					</div>
 				</SheetContent>
 			</Sheet>
-			<div className="flex-1">
+			<div className="flex items-center gap-2 flex-1">
+				<Image src="/logo.png" alt="Logo" width={24} height={24} className="h-6 w-6 object-contain" />
 				<h1 className="whitespace-nowrap font-semibold text-lg">{title}</h1>
 			</div>
 			{/* Optional: Add admin-specific header actions here, like a global search or quick actions */}
