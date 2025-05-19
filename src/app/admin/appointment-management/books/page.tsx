@@ -17,19 +17,19 @@ export default function ManageBookableServicesPage() {
   // TODO: Implement CRUD for bookable services
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col items-start gap-2 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Manage Bookable Services</h1>
+          <h1 className="text-xl md:text-2xl font-semibold">Manage Bookable Services</h1>
           <p className="text-muted-foreground">Define and configure services available for appointments.</p>
         </div>
-        <Button>
+        <Button className="w-full sm:w-auto">
           <PlusCircle className="mr-2 h-4 w-4" /> Add New Service
         </Button>
       </div>
 
       {/* Placeholder for Add/Edit Service Form/Modal */}
 
-      <Card>
+      <Card className="mb-[80px]">
         <CardHeader>
           <CardTitle>Configured Services</CardTitle>
         </CardHeader>
@@ -38,17 +38,17 @@ export default function ManageBookableServicesPage() {
             <ul className="space-y-3">
               {mockBookableServices.map((service) => (
                 <li key={service.id} className="rounded-lg border p-4">
-                  <div className="flex items-start justify-between">
-                    <div>
+                  <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="flex-grow">
                       <p className="font-medium text-lg">{service.name}</p>
-                      <p className="text-sm text-muted-foreground">{service.description}</p>
+                      <p className="text-sm text-muted-foreground break-words">{service.description}</p>
                     </div>
-                    <div className="flex gap-2 shrink-0">
-                        <Button variant="outline" size="sm"><Edit className="mr-1 h-3 w-3"/> Edit</Button>
-                        <Button variant="destructive" size="sm"><Trash2 className="h-4 w-4" /></Button>
+                    <div className="flex gap-2 shrink-0 w-full sm:w-auto mt-2 sm:mt-0">
+                        <Button variant="outline" size="sm" className="flex-1 sm:flex-initial"><Edit className="mr-1 h-3 w-3"/> Edit</Button>
+                        <Button variant="destructive" size="sm" className="flex-1 sm:flex-initial"><Trash2 className="h-4 w-4" /></Button>
                     </div>
                   </div>
-                  <div className="mt-3 pt-3 border-t grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
+                  <div className="mt-3 pt-3 border-t grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-2 text-sm">
                     <div>
                         <Label className="text-xs text-muted-foreground">Requires Approval</Label>
                         <p>{service.requiresApproval ? 'Yes' : 'No'}</p>

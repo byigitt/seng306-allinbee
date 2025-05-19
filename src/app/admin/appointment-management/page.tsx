@@ -6,11 +6,13 @@ import { ListChecks, BookOpenCheck } from "lucide-react";
 export default function AdminAppointmentOverviewPage() {
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Appointment Management</h1>
-        <p className="text-muted-foreground">Oversee scheduled appointments and manage bookable services.</p>
+      <div className="flex flex-col items-start gap-2 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h1 className="text-xl md:text-2xl font-semibold">Appointment Management</h1>
+          <p className="text-muted-foreground">Oversee scheduled appointments and manage bookable services.</p>
+        </div>
       </div>
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-2">
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><ListChecks className="h-5 w-5"/> View All Appointments</CardTitle>
