@@ -10,50 +10,153 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Edit3, LogOut, UserCircle } from "lucide-react"; // Assuming NextAuth handles logout
+import { Edit3, LogOut } from "lucide-react"; // Removed UserCircle as it's not used
 import type React from "react";
-import { useState } from "react";
-
-// Mock data - replace with API call (GET /api/users/me)
-const mockUserProfile = {
-	firstName: "Ada",
-	lastName: "Lovelace",
-	email: "ada.lovelace@example.com",
-	phoneNumber: "+1 555 123 4567",
-	role: "Student", // or "Staff"
-	avatarUrl: "/placeholders/avatar-mock.png", // Placeholder avatar
-};
+import { useState, useEffect } from "react";
+import { api, type RouterOutputs } from "@/trpc/react";
+import { signOut } from "next-auth/react";
+import { useRouter } from 'next/navigation'; // Added for redirection
+import type { TRPCClientErrorLike } from "@trpc/client"; // Import TRPCClientErrorLike
+import type { AppRouter } from "@/server/api/root"; // Import AppRouter for error typing
 
 export default function ProfilePage() {
 	const [isEditing, setIsEditing] = useState(false);
-	// For a real app, use React Hook Form or similar for form state and validation
 	const [formData, setFormData] = useState({
-		firstName: mockUserProfile.firstName,
-		lastName: mockUserProfile.lastName,
-		phoneNumber: mockUserProfile.phoneNumber,
-		// Email and role are typically not editable by the user directly
+		firstName: "",
+		lastName: "",
+		mInit: "",
+		phoneNumber: "",
+	});
+	const router = useRouter(); // Initialize router
+
+	const userQuery = api.user.me.useQuery(
+		undefined,
+		{
+			retry: (failureCount: number, error: TRPCClientErrorLike<AppRouter>) => {
+				if (error.data?.code === 'UNAUTHORIZED') {
+					return false;
+				}
+				return failureCount < 2;
+			},
+			refetchOnWindowFocus: false,
+		}
+	);
+
+	useEffect(() => {
+		if (userQuery.isSuccess && userQuery.data) {
+			const data = userQuery.data;
+			setFormData({
+				firstName: data.fName ?? "",
+				lastName: data.lName ?? "",
+				mInit: data.mInit ?? "",
+				phoneNumber: data.phoneNumber ?? "",
+			});
+		}
+	}, [userQuery.isSuccess, userQuery.data]);
+
+	useEffect(() => {
+		if (userQuery.isError && userQuery.error) {
+			const error = userQuery.error;
+			if (error.data?.code === 'UNAUTHORIZED') {
+				router.push('/auth/login');
+			} else {
+				console.error("Error fetching profile:", error.message);
+			}
+		}
+	}, [userQuery.isError, userQuery.error, router]);
+
+	const updateUserMutation = api.user.updateMe.useMutation({
+		onSuccess: async () => {
+			await userQuery.refetch();
+			alert("Profile updated successfully!");
+			setIsEditing(false);
+		},
+		onError: (error) => {
+			alert(`Error updating profile: ${error.message}`);
+		},
 	});
 
 	const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
 		const { id, value } = e.target;
+		if (id === "mInit" && value.length > 1) return;
 		setFormData((prev) => ({ ...prev, [id]: value }));
 	};
 
 	const handleSubmit = (e: React.FormEvent) => {
 		e.preventDefault();
-		// TODO: Call PUT /api/users/me with formData
-		alert("Profile updated successfully! (Mock)");
-		setIsEditing(false);
-		// Update mockUserProfile or refetch for real data
-		mockUserProfile.firstName = formData.firstName;
-		mockUserProfile.lastName = formData.lastName;
-		mockUserProfile.phoneNumber = formData.phoneNumber;
+		if (!userQuery.data) return;
+
+		updateUserMutation.mutate({
+			fName: formData.firstName,
+			lName: formData.lastName,
+			mInit: formData.mInit === "" ? undefined : formData.mInit,
+			phoneNumber: formData.phoneNumber,
+			name: `${formData.firstName} ${formData.lastName}`,
+		});
 	};
 
 	const handleLogout = () => {
-		// TODO: Integrate with NextAuth signOut()
-		alert("Logging out... (Mock)");
+		signOut(); // No more mock alert
 	};
+
+	const handleEditToggle = () => {
+		if (!isEditing && userQuery.data) {
+			setFormData({
+				firstName: userQuery.data.fName ?? "",
+				lastName: userQuery.data.lName ?? "",
+				mInit: userQuery.data.mInit ?? "",
+				phoneNumber: userQuery.data.phoneNumber ?? "",
+			});
+		}
+		setIsEditing(!isEditing);
+	};
+	
+	const handleCancelEdit = () => {
+		setIsEditing(false);
+		if (userQuery.data) {
+			setFormData({
+				firstName: userQuery.data.fName ?? "",
+				lastName: userQuery.data.lName ?? "",
+				mInit: userQuery.data.mInit ?? "",
+				phoneNumber: userQuery.data.phoneNumber ?? "",
+			});
+		}
+	};
+
+
+	if (userQuery.isLoading) {
+		return (
+			<div className="flex h-full items-center justify-center">
+				<p>Loading profile...</p>
+			</div>
+		);
+	}
+
+	if (userQuery.error && userQuery.error.data?.code !== 'UNAUTHORIZED') {
+		return (
+			<div className="flex h-full flex-col items-center justify-center">
+				<p className="text-red-500">Error loading profile: {userQuery.error.message}</p>
+				<Button onClick={() => userQuery.refetch()} className="mt-4">Try Again</Button>
+			</div>
+		);
+	}
+
+	if (!userQuery.data && !userQuery.isLoading) {
+		return (
+			<div className="flex h-full items-center justify-center">
+				<p>No profile data found.</p>
+				{/* Consider a button to go to login if session might have expired silently */}
+				{/* <Button onClick={() => router.push('/auth/login')} className="mt-4">Login</Button> */}
+			</div>
+		);
+	}
+
+	if (!userQuery.data) {
+		return null;
+	}
+
+	const { name, email, phoneNumber, role, fName, lName, image, mInit: userMInit } = userQuery.data;
+	const displayName = `${fName ?? ""}${userMInit ? ` ${userMInit}.` : ""} ${lName ?? ""}`.trim();
 
 	return (
 		<div className="space-y-6">
@@ -64,37 +167,37 @@ export default function ProfilePage() {
 						View and update your personal information.
 					</p>
 				</div>
-				<Button onClick={handleLogout} variant="outline">
+				<Button onClick={handleLogout} variant="outline" disabled={updateUserMutation.isPending}>
 					<LogOut className="mr-2 h-4 w-4" /> Logout
 				</Button>
 			</div>
 
 			<Card className="mx-auto w-full max-w-2xl">
-				<CardHeader className="flex flex-col items-center space-y-2 text-center sm:flex-row sm:space-y-0 sm:text-left">
+				<CardHeader className="relative flex flex-col items-center space-y-2 text-center sm:flex-row sm:space-y-0 sm:text-left">
 					<Avatar className="h-24 w-24 ring-2 ring-primary ring-offset-2 ring-offset-background">
 						<AvatarImage
-							src={mockUserProfile.avatarUrl}
-							alt={`${mockUserProfile.firstName} ${mockUserProfile.lastName}`}
+							src={image ?? "/placeholders/avatar-mock.png"} // Use user.image or fallback
+							alt={name ?? displayName}
 						/>
 						<AvatarFallback>
-							{mockUserProfile.firstName.charAt(0)}
-							{mockUserProfile.lastName.charAt(0)}
+							{(fName?.charAt(0) ?? "") + (lName?.charAt(0) ?? "")}
 						</AvatarFallback>
 					</Avatar>
 					<div className="sm:ml-6">
 						<CardTitle className="text-2xl">
-							{mockUserProfile.firstName} {mockUserProfile.lastName}
+							{name ?? displayName}
 						</CardTitle>
-						<CardDescription>{mockUserProfile.role}</CardDescription>
+						<CardDescription>{role}</CardDescription>
 						<p className="mt-1 text-muted-foreground text-sm">
-							{mockUserProfile.email}
+							{email}
 						</p>
 					</div>
 					<Button
 						variant="outline"
 						size="icon"
 						className="absolute top-4 right-4 ml-auto sm:static"
-						onClick={() => setIsEditing(!isEditing)}
+						onClick={handleEditToggle}
+						disabled={updateUserMutation.isPending}
 					>
 						<Edit3 className="h-5 w-5" />
 						<span className="sr-only">
@@ -112,6 +215,7 @@ export default function ProfilePage() {
 										id="firstName"
 										value={formData.firstName}
 										onChange={handleInputChange}
+										disabled={updateUserMutation.isPending}
 									/>
 								</div>
 								<div className="grid gap-2">
@@ -120,24 +224,38 @@ export default function ProfilePage() {
 										id="lastName"
 										value={formData.lastName}
 										onChange={handleInputChange}
+										disabled={updateUserMutation.isPending}
 									/>
 								</div>
 							</div>
-							<div className="grid gap-2">
-								<Label htmlFor="phoneNumber">Phone Number</Label>
-								<Input
-									id="phoneNumber"
-									type="tel"
-									value={formData.phoneNumber}
-									onChange={handleInputChange}
-								/>
+							<div className="grid gap-2 sm:grid-cols-2">
+								<div className="grid gap-2">
+									<Label htmlFor="mInit">Middle Initial</Label>
+									<Input
+										id="mInit"
+										value={formData.mInit}
+										onChange={handleInputChange}
+										maxLength={1}
+										disabled={updateUserMutation.isPending}
+									/>
+								</div>
+								<div className="grid gap-2">
+									<Label htmlFor="phoneNumber">Phone Number</Label>
+									<Input
+										id="phoneNumber"
+										type="tel"
+										value={formData.phoneNumber}
+										onChange={handleInputChange}
+										disabled={updateUserMutation.isPending}
+									/>
+								</div>
 							</div>
 							<div className="grid gap-2">
 								<Label htmlFor="email-display">Email (Read-only)</Label>
 								<Input
 									id="email-display"
 									type="email"
-									value={mockUserProfile.email}
+									value={email ?? ""}
 									readOnly
 									disabled
 								/>
@@ -146,7 +264,7 @@ export default function ProfilePage() {
 								<Label htmlFor="role-display">Role (Read-only)</Label>
 								<Input
 									id="role-display"
-									value={mockUserProfile.role}
+									value={role ?? ""}
 									readOnly
 									disabled
 								/>
@@ -155,11 +273,14 @@ export default function ProfilePage() {
 								<Button
 									type="button"
 									variant="outline"
-									onClick={() => setIsEditing(false)}
+									onClick={handleCancelEdit}
+									disabled={updateUserMutation.isPending}
 								>
 									Cancel
 								</Button>
-								<Button type="submit">Save Changes</Button>
+								<Button type="submit" disabled={updateUserMutation.isPending || userQuery.isFetching}>
+									{updateUserMutation.isPending ? "Saving..." : "Save Changes"}
+								</Button>
 							</div>
 						</form>
 					) : (
@@ -169,26 +290,26 @@ export default function ProfilePage() {
 									Full Name:
 								</span>
 								<span className="text-sm">
-									{mockUserProfile.firstName} {mockUserProfile.lastName}
+									{name ?? displayName}
 								</span>
 							</div>
 							<div className="flex items-center justify-between border-b py-2">
 								<span className="font-medium text-muted-foreground text-sm">
 									Email Address:
 								</span>
-								<span className="text-sm">{mockUserProfile.email}</span>
+								<span className="text-sm">{email}</span>
 							</div>
 							<div className="flex items-center justify-between border-b py-2">
 								<span className="font-medium text-muted-foreground text-sm">
 									Phone Number:
 								</span>
-								<span className="text-sm">{mockUserProfile.phoneNumber}</span>
+								<span className="text-sm">{phoneNumber ?? "N/A"}</span>
 							</div>
 							<div className="flex items-center justify-between py-2">
 								<span className="font-medium text-muted-foreground text-sm">
 									Role:
 								</span>
-								<span className="text-sm">{mockUserProfile.role}</span>
+								<span className="text-sm">{role ?? "N/A"}</span>
 							</div>
 						</div>
 					)}
