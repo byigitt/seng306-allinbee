@@ -528,7 +528,7 @@ async function main() {
   const routeIdMap = new Map<string, string>();
   const campusLoopRouteName = "Campus Loop";
   routes.push({
-    routeId: "ROUTE_AAAAAAAA-1111-1111-1111-111111111111",
+    routeId: uuidv4(),
     routeName: campusLoopRouteName,
   });
   for (let i = 0; i < 5; i++) {
