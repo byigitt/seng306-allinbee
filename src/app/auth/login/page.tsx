@@ -13,98 +13,119 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import Link from "next/link";
 import { signIn } from "next-auth/react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 
 export default function LoginPage() {
 	const router = useRouter();
+	const searchParams = useSearchParams();
+	const callbackUrl = searchParams.get("callbackUrl") || "/";
 	const [email, setEmail] = useState("");
 	const [password, setPassword] = useState("");
 	const [error, setError] = useState<string | null>(null);
 	const [isLoading, setIsLoading] = useState(false);
 
-	const handleEmailLogin = async (e: React.FormEvent) => {
-		e.preventDefault();
+	const handleGoogleSignIn = () => {
 		setIsLoading(true);
+		signIn("google", { callbackUrl }).catch(() => setIsLoading(false));
+	};
+
+	const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+		event.preventDefault();
 		setError(null);
+		setIsLoading(true);
 
-		const result = await signIn("credentials", {
-			redirect: false,
-			email,
-			password,
-		});
+		try {
+			const result = await signIn("credentials", {
+				redirect: false,
+				email,
+				password,
+			});
 
-		setIsLoading(false);
-
-		if (result?.error) {
-			setError(result.error === "CredentialsSignin" ? "Invalid email or password" : result.error);
-		} else if (result?.ok) {
-			router.push("/"); // Redirect to homepage or dashboard
+			if (result?.error) {
+				if (result.error === "CredentialsSignin") {
+					setError("Invalid email or password. Please try again.");
+				} else {
+					setError(`Login failed: ${result.error}`);
+				}
+				setIsLoading(false);
+			} else if (result?.ok) {
+				router.push(callbackUrl);
+			} else {
+				setError("An unexpected issue occurred during login.");
+				setIsLoading(false);
+			}
+		} catch (err) {
+			console.error("Login submission error:", err);
+			setError("An unexpected error occurred. Please check your connection and try again.");
+			setIsLoading(false);
 		}
 	};
 
-	const handleGoogleLogin = async () => {
-		setIsLoading(true);
-		setError(null);
-		await signIn("google", { callbackUrl: "/" });
-    // No need to set isLoading false here as Google redirect will take over
-	};
-
 	return (
-		<Card className="w-full max-w-sm">
-			<form onSubmit={handleEmailLogin}>
-				<CardHeader>
-					<CardTitle className="text-2xl">Login</CardTitle>
+		<div className="flex min-h-screen items-center justify-center bg-background px-4 py-12 sm:px-6 lg:px-8">
+			<Card className="w-full max-w-md">
+				<CardHeader className="space-y-1 text-center">
+					<CardTitle className="text-2xl font-bold tracking-tight">Sign in to your account</CardTitle>
 					<CardDescription>
-						Enter your email below to login to your account.
+						Or <Link href="/auth/register" className="font-medium text-primary hover:underline">create a new account</Link>
 					</CardDescription>
 				</CardHeader>
-				<CardContent className="grid gap-4">
-					<div className="grid gap-2">
-						<Label htmlFor="email">Email</Label>
-						<Input 
-							id="email" 
-							type="email" 
-							placeholder="m@example.com" 
-							required 
-							value={email}
-							onChange={(e) => setEmail(e.target.value)}
-							disabled={isLoading}
-						/>
+				<CardContent className="space-y-4">
+					{error && (
+						<div className="rounded-md bg-destructive/10 p-3 text-center text-sm text-destructive">
+							<p>{error}</p>
+						</div>
+					)}
+					<form onSubmit={handleSubmit} className="space-y-4">
+						<div className="space-y-2">
+							<Label htmlFor="email">Email address</Label>
+							<Input 
+								id="email" 
+								name="email" 
+								type="email" 
+								autoComplete="email" 
+								required 
+								value={email} 
+								onChange={(e) => setEmail(e.target.value)} 
+								disabled={isLoading}
+							/>
+						</div>
+						<div className="space-y-2">
+							<Label htmlFor="password">Password</Label>
+							<Input 
+								id="password" 
+								name="password" 
+								type="password" 
+								autoComplete="current-password" 
+								required 
+								value={password} 
+								onChange={(e) => setPassword(e.target.value)} 
+								disabled={isLoading}
+							/>
+						</div>
+						<Button type="submit" className="w-full" disabled={isLoading}>
+							{isLoading ? "Signing in..." : "Sign in"}
+						</Button>
+					</form>
+					<div className="relative my-4">
+						<div className="absolute inset-0 flex items-center">
+							<span className="w-full border-t" />
+						</div>
+						<div className="relative flex justify-center text-xs uppercase">
+							<span className="bg-background px-2 text-muted-foreground">Or continue with</span>
+						</div>
 					</div>
-					<div className="grid gap-2">
-						<Label htmlFor="password">Password</Label>
-						<Input 
-							id="password" 
-							type="password" 
-							required 
-							value={password}
-							onChange={(e) => setPassword(e.target.value)}
-							disabled={isLoading}
-						/>
-					</div>
-					{error && <p className="text-sm text-red-500">{error}</p>}
-				</CardContent>
-				<CardFooter className="flex flex-col gap-4">
-					<Button type="submit" className="w-full" disabled={isLoading}>
-						{isLoading ? "Signing in..." : "Sign in"}
-					</Button>
-					<Button type="button" variant="outline" className="w-full" onClick={handleGoogleLogin} disabled={isLoading}>
+					<Button variant="outline" className="w-full" onClick={handleGoogleSignIn} disabled={isLoading}>
 						{isLoading ? "Redirecting..." : "Sign in with Google"}
 					</Button>
-					<div className="mt-4 text-center text-sm">
-						Don&apos;t have an account?{" "}
-						<Link href="/auth/register" className="underline">
-							Sign up
-						</Link>
-					</div>
-					<div className="mt-2 w-full">
-						<Button type="button" variant="ghost" className="w-full" onClick={() => router.push('/')}>
-							Go to Homepage
-						</Button>
-					</div>
+				</CardContent>
+				<CardFooter className="text-center text-sm">
+					<p className="text-muted-foreground">
+						Having trouble? <Link href="/contact-support" className="font-medium text-primary hover:underline">Contact support</Link>
+					</p>
 				</CardFooter>
-			</form>
-		</Card>
+			</Card>
+		</div>
 	);
 }

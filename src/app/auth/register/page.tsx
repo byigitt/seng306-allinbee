@@ -29,7 +29,7 @@ export default function RegisterPage() {
 
 	const registerMutation = api.user.register.useMutation();
 
-	const handleRegister = async (e: React.FormEvent) => {
+	const handleRegister = async (e: React.FormEvent<HTMLFormElement>) => {
 		e.preventDefault();
 		setIsLoading(true);
 		setError(null);
@@ -43,7 +43,6 @@ export default function RegisterPage() {
 				password,
 			});
 
-			// Automatically sign in after successful registration
 			const signInResult = await signIn("credentials", {
 				redirect: false,
 				email,
@@ -53,115 +52,127 @@ export default function RegisterPage() {
 			setIsLoading(false);
 
 			if (signInResult?.error) {
-				setError(signInResult.error === "CredentialsSignin" ? "Failed to auto-login after registration." : signInResult.error);
+				setError(signInResult.error === "CredentialsSignin" ? "Failed to auto-login after registration. Please try logging in." : `Registration successful, but login failed: ${signInResult.error}`);
 			} else if (signInResult?.ok) {
-				router.push("/"); // Redirect to homepage or dashboard
+				router.push("/"); 
 			}
 		} catch (mutationError: any) {
 			setIsLoading(false);
-			setError(mutationError.message || "An error occurred during registration.");
+      // Check for specific error message from backend for existing user
+      if (mutationError?.message?.toLowerCase().includes("user with this email already exists")) {
+        setError("An account with this email already exists. Please try logging in.");
+      } else {
+        setError(mutationError.message || "An error occurred during registration.");
+      }
 		}
 	};
 
-	const handleGoogleLogin = async () => {
+	const handleGoogleSignUp = () => {
 		setIsLoading(true);
-		setError(null);
-		await signIn("google", { callbackUrl: "/" });
+		// Errors from Google sign-in will typically redirect to an error page or handle via callbackUrl with error params
+		signIn("google", { callbackUrl: "/" }).catch(() => setIsLoading(false)); 
 	};
 
 	return (
-		<Card className="w-full max-w-sm">
-			<form onSubmit={handleRegister}>
-				<CardHeader>
-					<CardTitle className="text-2xl">Sign Up</CardTitle>
-					<CardDescription>
-						Enter your information to create an account.
-					</CardDescription>
-				</CardHeader>
-				<CardContent className="grid gap-4">
-					<div className="grid grid-cols-2 gap-4">
-						<div className="grid gap-2">
-							<Label htmlFor="first-name">First name</Label>
-							<Input 
-								id="first-name" 
-								placeholder="Max" 
-								required 
-								value={firstName}
-								onChange={(e) => setFirstName(e.target.value)}
-								disabled={isLoading}
-							/>
-						</div>
-						<div className="grid gap-2">
-							<Label htmlFor="last-name">Last name</Label>
-							<Input 
-								id="last-name" 
-								placeholder="Robinson" 
-								required 
-								value={lastName}
-								onChange={(e) => setLastName(e.target.value)}
-								disabled={isLoading}
-							/>
-						</div>
-					</div>
-					<div className="grid gap-2">
-						<Label htmlFor="email">Email</Label>
-						<Input 
-							id="email" 
-							type="email" 
-							placeholder="m@example.com" 
-							required 
-							value={email}
-							onChange={(e) => setEmail(e.target.value)}
-							disabled={isLoading}
-						/>
-					</div>
-					{/* Phone number field is present in UI but not used in current register mutation 
-						 You might want to add it to the user.register tRPC input schema and data handling */}
-					<div className="grid gap-2">
-						<Label htmlFor="phone">Phone Number (Optional)</Label>
-						<Input 
-							id="phone" 
-							type="tel" 
-							placeholder="+1 234 567 8900" 
-							// required // Making it optional for now as backend doesn't support it
-							value={phone}
-							onChange={(e) => setPhone(e.target.value)}
-							disabled={isLoading}
-						/>
-					</div>
-					<div className="grid gap-2">
-						<Label htmlFor="password">Password</Label>
-						<Input 
-							id="password" 
-							type="password" 
-							required 
-							value={password}
-							onChange={(e) => setPassword(e.target.value)}
-							disabled={isLoading}
-						/>
-					</div>
-					{error && <p className="text-sm text-red-500">{error}</p>}
-				</CardContent>
-				<CardFooter className="flex flex-col gap-4">
-					<Button type="submit" className="w-full" disabled={isLoading || registerMutation.isPending}>
-						{isLoading || registerMutation.isPending ? "Creating account..." : "Create account"}
-					</Button>
-					<Button type="button" variant="outline" className="w-full" onClick={handleGoogleLogin} disabled={isLoading}>
-						{isLoading ? "Redirecting..." : "Sign up with Google"}
-					</Button>
-					<div className="mt-4 text-center text-sm">
-						Already have an account?{" "}
-						<Link href="/auth/login" className="underline">
-							Sign in
-						</Link>
-					</div>
-					<div className="mt-2 w-full">
-						<Button type="button" variant="ghost" className="w-full" onClick={() => router.push('/')}>
-							Go to Homepage
-						</Button>
-					</div>
-				</CardFooter>
-			</form>
-		</Card>
+    <div className="flex min-h-screen items-center justify-center bg-background px-4 py-12 sm:px-6 lg:px-8">
+  		<Card className="w-full max-w-md">
+  			<CardHeader className="space-y-1 text-center">
+  				<CardTitle className="text-2xl font-bold tracking-tight">Create your account</CardTitle>
+  				<CardDescription>
+  					Already have an account?{" "}
+  					<Link href="/auth/login" className="font-medium text-primary hover:underline">
+  						Sign in
+  					</Link>
+  				</CardDescription>
+  			</CardHeader>
+        <CardContent className="space-y-4">
+          {error && (
+            <div className="rounded-md bg-destructive/10 p-3 text-center text-sm text-destructive">
+              <p>{error}</p>
+            </div>
+          )}
+    			<form onSubmit={handleRegister} className="space-y-4">
+    				<div className="grid grid-cols-2 gap-4">
+    					<div className="space-y-2">
+    						<Label htmlFor="first-name">First name</Label>
+    						<Input 
+    							id="first-name" 
+    							placeholder="Max" 
+    							required 
+    							value={firstName}
+    							onChange={(e) => setFirstName(e.target.value)}
+    							disabled={isLoading}
+    						/>
+    					</div>
+    					<div className="space-y-2">
+    						<Label htmlFor="last-name">Last name</Label>
+    						<Input 
+    							id="last-name" 
+    							placeholder="Robinson" 
+    							required 
+    							value={lastName}
+    							onChange={(e) => setLastName(e.target.value)}
+    							disabled={isLoading}
+    						/>
+    					</div>
+    				</div>
+    				<div className="space-y-2">
+    					<Label htmlFor="email">Email</Label>
+    					<Input 
+    						id="email" 
+    						type="email" 
+    						placeholder="m@example.com" 
+    						required 
+    						value={email}
+    							onChange={(e) => setEmail(e.target.value)}
+    						disabled={isLoading}
+    					/>
+    				</div>
+    				<div className="space-y-2">
+    					<Label htmlFor="phone">Phone Number (Optional)</Label>
+    					<Input 
+    						id="phone" 
+    						type="tel" 
+    						placeholder="+1 234 567 8900" 
+    						value={phone}
+    							onChange={(e) => setPhone(e.target.value)}
+    							disabled={isLoading}
+    					/>
+    				</div>
+    				<div className="space-y-2">
+    					<Label htmlFor="password">Password</Label>
+    					<Input 
+    						id="password" 
+    						type="password" 
+    						required 
+    						minLength={8} // Added minLength for better UX based on typical password reqs
+    						value={password}
+    							onChange={(e) => setPassword(e.target.value)}
+    							disabled={isLoading}
+    					/>
+    				</div>
+              <Button type="submit" className="w-full" disabled={isLoading || registerMutation.isPending}>
+                {isLoading || registerMutation.isPending ? "Creating account..." : "Create account"}
+              </Button>
+    			</form>
+          <div className="relative my-4">
+            <div className="absolute inset-0 flex items-center">
+              <span className="w-full border-t" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-background px-2 text-muted-foreground">Or continue with</span>
+            </div>
+          </div>
+  				<Button type="button" variant="outline" className="w-full" onClick={handleGoogleSignUp} disabled={isLoading}>
+  					{isLoading ? "Redirecting..." : "Sign up with Google"}
+  				</Button>
+        </CardContent>
+        <CardFooter className="text-center text-sm">
+            <p className="text-muted-foreground">
+                By creating an account, you agree to our <Link href="/terms" className="font-medium text-primary hover:underline">Terms of Service</Link>.
+            </p>
+        </CardFooter>
+  		</Card>
+    </div>
 	);
 }
