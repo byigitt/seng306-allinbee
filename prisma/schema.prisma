@@ -14,39 +14,43 @@ datasource db {
     url      = env("DATABASE_URL")
 }
 
-// Modified User Model for NextAuth and new fields
+// Modified User Model for NextAuth and new fields from DDL
 model User {
-    // NextAuth original fields
-    id            String    @id @default(cuid())
+    // NextAuth original fields + DDL "UserID"
+    id            String    @id @map("UserID") // Changed from cuid() to map DDL "UserID" varchar(25)
     name          String?   // This field is from NextAuth. SQL has FName, LName.
-                          // Consider how you want to manage this: derive from FName/LName, or keep separate.
-    email         String?   @unique
+    email         String    @unique @map("E-Mail") // DDL: "E-Mail" varchar(255) UNIQUE
     emailVerified DateTime?
     image         String?
     accounts      Account[]
     sessions      Session[]
 
-    // Fields from SQL DDL's Users table, integrated here
-    fName         String    @map("FName")
-    mInit         String?   @map("Minit")
-    lName         String    @map("LName")
-    // passwordHash is for when you use the Credentials provider with NextAuth.
-    // If you only use OAuth, you might not need this stored directly.
-    passwordHash  String    @map("PasswordHash")
-    phoneNumber   String?
+    // Fields from SQL DDL's "USER" table, integrated here
+    fName         String    @map("FName")          // DDL: "FName" varchar(100) NOT NULL
+    mInit         String?   @map("Minit")          // DDL: "Minit" char(1)
+    lName         String    @map("LName")          // DDL: "LName" varchar(100) NOT NULL
+    password      String?   @map("Password")       // DDL: "Password" text NOT NULL. Kept optional for OAuth.
+    phoneNumber   String?   @map("Phone_Number")   // DDL: "Phone_Number" varchar(30)
 
     // Relations to new models
-    student         Student?            // One-to-one with Student specific data
-    admin           Admin?              // One-to-one with Admin specific data
-    staff           Staff?              // One-to-one with Staff specific data
-    favoriteRoutes  UserFavoriteRoute[] // Many-to-many for favorite routes
+    student         Student?             // One-to-one with Student specific data
+    admin           Admin?               // One-to-one with Admin specific data
+    staff           Staff?               // One-to-one with Staff specific data
+    favoriteRoutes  UserFavoriteRoute[]  // Many-to-many for favorite routes
+    looksAtRoutes   UserLooksAtRoute[]   // For "LOOKS" table
+
+    // Back-relations for admin management
+    managedStudents Student[] @relation("UserManagesStudent")
+    managedStaff    Staff[]   @relation("UserManagesStaff")
+
+    @@map("USER") // Maps to the "USER" table in SQL
 }
 
 // Necessary for Next auth - These models remain largely unchanged,
 // but their 'user' relation points to the modified User model above.
 model Account {
     id                       String  @id @default(cuid())
-    userId                   String
+    userId                   String  @map("UserID") // Maps to User.id which is UserID
     type                     String
     provider                 String
     providerAccountId        String
@@ -66,7 +70,7 @@ model Account {
 model Session {
     id           String   @id @default(cuid())
     sessionToken String   @unique
-    userId       String
+    userId       String   @map("UserID") // Maps to User.id which is UserID
     expires      DateTime
     user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
@@ -80,299 +84,294 @@ model VerificationToken {
 }
 
 // ---- All new models based on SQL DDL start here ----
-// ---- Note: Foreign Keys to 'Users' in SQL now point to the NextAuth 'User' model's 'id' (String @default(cuid())) ----
 
 // User Subtypes - linking to the main User model
 model Student {
-    userId          String       @id // This IS the User.id from NextAuth User model
-    user            User         @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-
-    managingAdminId String?      // This refers to an Admin's UserID
-    managingAdmin   Admin?       @relation("AdminManagesStudent", fields: [managingAdminId], references: [userId], onDelete: SetNull, onUpdate: Cascade)
+    userId          String        @id @map("UserID") // This IS the User.id from DDL "USER" table
+    user            User          @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+    managingAdminId String?       @map("MNGUserID")  // DDL: "MNGUserID" varchar(25) REFERENCES "USER"("UserID")
+    managingAdmin   User?         @relation("UserManagesStudent", fields: [managingAdminId], references: [id], onDelete: SetNull, onUpdate: Cascade) // Changed to User
     digitalCard     DigitalCard?
     appointments    Appointment[] @relation("StudentAppointments")
 
-    @@map("Students") // Maps to the "Students" table in SQL
+    @@map("STUDENT")
 }
 
 model Admin {
-    userId          String    @id // This IS the User.id from NextAuth User model
+    userId          String    @id @map("UserID") // This IS the User.id from DDL "USER" table
     user            User      @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+    // managedStudents Student[] @relation("AdminManagesStudent") // This relation is now from Student.managingAdmin (User)
+    // managedStaff    Staff[]   @relation("AdminManagesStaff")   // This relation is now from Staff.managingAdmin (User)
 
-    managedStudents Student[] @relation("AdminManagesStudent")
-    managedStaff    Staff[]   @relation("AdminManagesStaff")
-
-    @@map("Admins") // Maps to the "Admins" table in SQL
+    @@map("ADMIN")
 }
 
 model Staff {
-    userId          String        @id // This IS the User.id from NextAuth User model
-    user            User          @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-
-    managingAdminId String?       // This refers to an Admin's UserID
-    managingAdmin   Admin?        @relation("AdminManagesStaff", fields: [managingAdminId], references: [userId], onDelete: SetNull, onUpdate: Cascade)
-    menusManaged    Menu[]        @relation("StaffManagesMenu")
-    routesManaged   StaffManagesRoute[]
+    userId              String        @id @map("UserID") // This IS the User.id from DDL "USER" table
+    user                User          @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+    managingAdminId     String?       @map("MNGUserID")  // DDL: "MNGUserID" varchar(25) REFERENCES "USER"("UserID")
+    managingAdmin       User?         @relation("UserManagesStaff", fields: [managingAdminId], references: [id], onDelete: SetNull, onUpdate: Cascade) // Changed to User
+    menusManaged        Menu[]        @relation("StaffManagesMenu")
+    routesManagedByStaff StaffManagesRoute[] // DDL "MANAGES" table implies User manages Route. This keeps Staff specific.
     appointmentsManaged Appointment[] @relation("StaffManagesAppointment")
+    issuedDigitalCards  DigitalCard[] @relation("StaffIssuesDigitalCard")
 
 
-    @@map("Staff") // Maps to the "Staff" table in SQL
+    @@map("STAFF")
 }
 
 // Digital Card (1:1 with Student, which links to User)
 model DigitalCard {
-    userId            String              @id // This is Student.userId, which is User.id
-    student           Student             @relation(fields: [userId], references: [userId], onDelete: Cascade, onUpdate: Cascade)
-    cardNo            String              @unique // Added based on user schema
-    balance           Decimal             @default(0.00) @db.Decimal(10, 2) // CHECK (Balance >= 0)
-    cardCreationDate  DateTime            @default(now()) @map("Card_CreationDate")
-    depositTransactions DepositTransaction[]
-    qrCodes           QRCode[]
+    userId             String     @id @map("SUserID") // DDL: "SUserID" varchar(25) REFERENCES "STUDENT"
+    student            Student    @relation(fields: [userId], references: [userId], onDelete: Cascade, onUpdate: Cascade)
+    cardNo             String     @unique @map("Card_NO")    // DDL: "Card_NO" varchar(40) UNIQUE NOT NULL
+    cardCreationDate   DateTime   @default(now()) @map("Date") // DDL: "Date" timestamptz NOT NULL DEFAULT now()
+    issuedByStaffId    String?    @map("HASUserID")         // DDL: "HASUserID" varchar(25) REFERENCES "STAFF"
+    issuedByStaff      Staff?     @relation("StaffIssuesDigitalCard", fields: [issuedByStaffId], references: [userId], onDelete: SetNull, onUpdate: Cascade)
+    balance            Decimal    @default(0.00) @db.Decimal(10, 2) @map("Balance") // DDL: "Balance" numeric(10,2) NOT NULL DEFAULT 0
+    depositMoneyAmount Decimal    @default(0.00) @db.Decimal(10,2) @map("DepositMoneyAmount") // DDL: "DepositMoneyAmount" numeric(10,2) NOT NULL DEFAULT 0
+    qrCodes            QRCode[]
 
     @@index([balance])
-    @@map("DigitalCards")
-}
-
-// Deposit Transactions for Digital Cards
-model DepositTransaction {
-    transactionId   String      @id @default(uuid()) @map("TransactionID") // Kept as UUID from SQL
-    userId          String      // This is DigitalCard.userId (-> Student.userId -> User.id)
-    digitalCard     DigitalCard @relation(fields: [userId], references: [userId], onDelete: Cascade, onUpdate: Cascade)
-    amount          Decimal     @db.Decimal(10, 2) // CHECK (Amount > 0)
-    transactionDate DateTime    @default(now())
-
-    @@map("DepositTransactions")
+    @@map("DIGITALCARD")
 }
 
 // Routes
 model Route {
-    routeId           String                @id @default(uuid()) @map("RouteID") // Kept as UUID
-    routeName         String                @unique
+    routeId           String                @id @default(uuid()) @map("Route_ID")   // DDL: "Route_ID" uuid PRIMARY KEY
+    routeName         String                @unique @map("RouteName") // DDL: "RouteName" varchar(120) UNIQUE NOT NULL
     departureTimes    RouteDepartureTime[]
-    userFavorites     UserFavoriteRoute[]   // Links to UserFavoriteRoute -> User
-    staffManages      StaffManagesRoute[]   // Links to StaffManagesRoute -> Staff -> User
-    busDrives         BusDrivesRoute[]
+    userFavorites     UserFavoriteRoute[]
+    managedByStaff    StaffManagesRoute[]   // Relation for "MANAGES" interpreted as Staff
+    drivenByBuses     BusDrivesRoute[]      // Renamed from busDrives
     routeStations     RouteStation[]
+    lookedAtByUsers   UserLooksAtRoute[]    // For "LOOKS" table
 
-    @@map("Routes")
+    @@map("ROUTE")
 }
 
 // Route Departure Times
 model RouteDepartureTime {
-    routeId       String   // Refers to Route.routeId (UUID)
+    routeId       String   @map("Route_ID")      // DDL: "Route_ID" uuid REFERENCES "ROUTE"
     route         Route    @relation(fields: [routeId], references: [routeId], onDelete: Cascade, onUpdate: Cascade)
-    departureTime DateTime @db.Time // Store as TIME
+    departureTime DateTime @db.Time @map("DepartureTime") // DDL: "DepartureTime" time NOT NULL
 
     @@id([routeId, departureTime])
-    @@map("Route_Departure_Times")
+    @@map("ROUTE_DEPARTURE_TIMES")
 }
 
 // Stations
 model Station {
-    stationId         String   @id @default(uuid()) @map("StationID") // Kept as UUID
-    stationName       String
-    stationLatitude   Decimal  @map("Station_Latitude") @db.Decimal(9,6)
-    stationLongitude  Decimal  @map("Station_Longitude") @db.Decimal(9,6)
-    routeStations     RouteStation[]
+    stationId        String   @id @default(uuid()) @map("Station_ID")         // DDL: "Station_ID" uuid PRIMARY KEY
+    stationName      String   @map("Station_Name")       // DDL: "Station_Name" varchar(120) NOT NULL
+    stationLatitude  Decimal  @map("Station_Latitude") @db.Decimal(9,6)  // DDL: "Station_Latitude" numeric(9,6) NOT NULL
+    stationLongitude Decimal  @map("Station_Longitude") @db.Decimal(9,6) // DDL: "Station_Longitude" numeric(9,6) NOT NULL
+    routeStations    RouteStation[]
 
-    @@unique([stationLatitude, stationLongitude], map: "uq_station_location")
-    @@map("Stations")
+    @@unique([stationLatitude, stationLongitude], map: "uq_station_location") // DDL: UNIQUE ("Station_Latitude","Station_Longitude")
+    @@map("STATION")
 }
 
 // Buses
 model Bus {
-    vehicleId      String           @id @map("VehicleID")
-    liveLatitude   Decimal?         @map("Live_Latitude") @db.Decimal(9,6)
-    liveLongitude  Decimal?         @map("Live_Longitude") @db.Decimal(9,6)
-    lastUpdateTime DateTime?
-    busDrivesRoutes  BusDrivesRoute[]
+    vehicleId     String           @id @map("Vehicle_ID")    // DDL: "Vehicle_ID" varchar(40) PRIMARY KEY
+    liveLatitude  Decimal?         @map("Live_Latitude") @db.Decimal(9,6)  // DDL: "Live_Latitude" numeric(9,6)
+    liveLongitude Decimal?         @map("Live_Longitude") @db.Decimal(9,6) // DDL: "Live_Longitude" numeric(9,6)
+    drivesRoutes  BusDrivesRoute[] // Renamed from busDrivesRoutes
 
-    @@index([lastUpdateTime])
-    @@map("Buses")
+    @@map("BUS")
 }
 
 // Dishes
 model Dish {
-    dishId    String      @id @default(uuid()) @map("DishID") // Kept as UUID
-    dishName  String      @unique
-    calories  Int?        // CHECK (Calories >= 0)
+    dishId    String     @id @default(uuid()) @map("Dish_ID")   // DDL: "Dish_ID" uuid PRIMARY KEY
+    dishName  String     @unique @map("Dish_Name") // DDL: "Dish_Name" varchar(120) UNIQUE NOT NULL
+    calories  Int?       @map("Calories")  // DDL: "Calories" int CHECK ("Calories" >= 0)
     menuDishes MenuDish[]
 
-    @@map("Dishes")
+    @@map("DISH")
 }
 
 // Menus
 model Menu {
-    menuId           String     @id @default(uuid()) @map("MenuID") // Kept as UUID
-    managedByStaffId String     @map("ManagedBy_StaffID") // This is Staff.userId (-> User.id)
+    menuId           String     @id @default(uuid()) @map("Menu_ID")   // DDL: "Menu_ID" uuid PRIMARY KEY
+    managedByStaffId String     @map("MngUserID") // DDL: "MngUserID" varchar(25) REFERENCES "USER" (interpreted as Staff)
     managedByStaff   Staff      @relation("StaffManagesMenu", fields: [managedByStaffId], references: [userId], onDelete: Restrict, onUpdate: Cascade)
-    menuName         String     @map("Menu_Name") // Renamed from menuOfferingName
-    price            Decimal    @db.Decimal(10, 2) // CHECK (Price >= 0)
+    menuName         String     @map("Menu_Name") // DDL: "Menu_Name" varchar(120) NOT NULL
+    price            Decimal    @db.Decimal(10, 2) @map("Price") // DDL: "Price" numeric(10,2) NOT NULL
     qrCodes          QRCode[]
-    sale             Sale?
+    sales            Sale[]     // Changed from sale Sale? to Sale[]
     menuDishes       MenuDish[]
 
-    @@unique([menuName, managedByStaffId, price], map: "uq_menu_details") // Adjusted unique constraint
-    @@map("Menus")
+    // Removed @@unique([menuName, managedByStaffId, price]) as not in DDL
+    @@map("MENU")
 }
 
 // QR Codes
 model QRCode {
-    qrId          String      @id @default(uuid()) @map("QR_ID") // Kept as UUID
-    userId        String      // This is DigitalCard.userId (-> Student.userId -> User.id)
-    digitalCard   DigitalCard @relation(fields: [userId], references: [userId], onDelete: Cascade, onUpdate: Cascade)
-    menuId        String?     // Refers to Menu.menuId (UUID)
-    menu          Menu?       @relation(fields: [menuId], references: [menuId], onDelete: SetNull, onUpdate: Cascade)
-    cardNo        String?     @map("Card_NO") // Added based on user DDL
-    createDate    DateTime    @default(now()) @map("Create_Date")
-    expiredDate   DateTime    @map("Expired_Date")
-    paysForDate   DateTime?   @map("PaysFor_Date") // Added based on user DDL
-    remainingTime String?
+    qrId        String    @id @default(uuid()) @map("QR_ID")        // DDL: "QR_ID" uuid PRIMARY KEY
+    userId      String    @map("SUserID")      // DDL: "SUserID" varchar(25) REFERENCES "STUDENT" (links via DigitalCard.userId)
+    digitalCard DigitalCard @relation(fields: [userId], references: [userId], onDelete: Cascade, onUpdate: Cascade) // Links to Student's DigitalCard
+    menuId      String?   @map("MMenu_ID")     // DDL: "MMenu_ID" uuid REFERENCES "MENU"
+    menu        Menu?     @relation(fields: [menuId], references: [menuId], onDelete: SetNull, onUpdate: Cascade)
+    cardNo      String?   @map("Card_NO")      // DDL: "Card_NO" varchar(40) (from Student's DigitalCard)
+    createDate  DateTime  @default(now()) @map("Create_Date") // DDL: "Create_Date" timestamptz NOT NULL DEFAULT now()
+                                                              // DDL also has "Date", assumed to be "Create_Date"
+    expiredDate DateTime  @map("Expired_Date") // DDL: "Expired_Date" timestamptz NOT NULL
+    paysForDate DateTime? @map("PaysFor_Date") // DDL: "PaysFor_Date" timestamptz
+    // DDL "DCard_NO" field omitted as redundant with cardNo / userId link
 
     @@index([userId])
-    @@map("QRCodes")
+    @@map("QR")
 }
 
 // Sales
 model Sale {
-    menuId   String @id      // This is Menu.menuId (UUID), PK and FK
-    menu     Menu   @relation(fields: [menuId], references: [menuId], onDelete: Cascade, onUpdate: Cascade)
-    numSold  Int    @default(0) @map("Num_Sold") // CHECK (Num_Sold >= 0)
+    menuId   String   @map("MMenu_ID") // DDL: "MMenu_ID" uuid REFERENCES "MENU"
+    menu     Menu     @relation(fields: [menuId], references: [menuId], onDelete: Cascade, onUpdate: Cascade)
+    saleDate DateTime @db.Date @map("Date")     // DDL: "Date" date NOT NULL
+    numSold  Int      @default(0) @map("Num_Sold") // DDL: "Num_Sold" int NOT NULL DEFAULT 0
 
-    @@map("Sales")
+    @@id([menuId, saleDate]) // DDL: PRIMARY KEY ("MMenu_ID","Date")
+    @@map("SALES")
 }
 
 // Books
 model Book {
-    isbn            String                     @id @map("ISBN")
-    title           String
-    author          String?
-    quantityInStock Int                        // CHECK (QuantityInStock >= 0)
-    currentQuantity Int                        // CHECK (CurrentQuantity >= 0 AND CurrentQuantity <= QuantityInStock)
-    borrowRecords   BookAppointmentBorrowsBook[]
+    isbn            String                @id @map("ISBN")              // DDL: "ISBN" varchar(20) PRIMARY KEY
+    title           String                @map("Title")             // DDL: "Title" varchar(255) NOT NULL
+    author          String?               @map("Author")            // DDL: "Author" varchar(255)
+    quantityInStock Int                   @map("QuantityInStock")   // DDL: "QuantityInStock" int NOT NULL
+    currentQuantity Int                   @map("CurrentQuantity")   // DDL: "CurrentQuantity" int NOT NULL
+    borrowRecords   BookBorrowRecord[]    // Changed from BookAppointmentBorrowsBook
 
     @@index([currentQuantity])
-    @@map("Books")
+    @@map("BOOK")
 }
 
 // Appointments (Supertype)
 model Appointment {
-    appointmentId     String            @id @default(uuid()) @map("AppointmentID") // Kept as UUID
-    takenByStudentId  String            @map("TakenBy_StudentID") // This is Student.userId (-> User.id)
+    appointmentId     String            @id @default(uuid()) @map("Appointment_ID") // DDL: "Appointment_ID" uuid PRIMARY KEY
+    takenByStudentId  String            @map("SUserID")    // DDL: "SUserID" varchar(25) REFERENCES "STUDENT"
     takenByStudent    Student           @relation("StudentAppointments", fields: [takenByStudentId], references: [userId], onDelete: Cascade, onUpdate: Cascade)
-    managedByStaffId  String            @map("ManagedBy_StaffID") // This is Staff.userId (-> User.id)
+    managedByStaffId  String            @map("MNGStaffID") // DDL: "MNGStaffID" varchar(25) REFERENCES "STAFF"
     managedByStaff    Staff             @relation("StaffManagesAppointment", fields: [managedByStaffId], references: [userId], onDelete: Restrict, onUpdate: Cascade)
-    appointmentDate   DateTime          @db.Date
-    appointmentStatus AppointmentStatus @default(Scheduled) // ENUM
-    bookAppointment   BookAppointment?
+    appointmentDate   DateTime          @db.Date @map("AppointmentDate") // DDL: "AppointmentDate" date NOT NULL
+    appointmentStatus AppointmentStatus @default(Scheduled)
+    bookBorrowRecords BookBorrowRecord[]  // Changed from bookAppointment BookAppointment?
     sportAppointment  SportAppointment?
     healthAppointment HealthAppointment?
 
     @@index([takenByStudentId, appointmentDate])
     @@index([managedByStaffId, appointmentDate])
-    @@map("Appointments")
+    @@map("APPOINTMENT")
 }
 
 // Appointment Subtypes
-model BookAppointment {
-    appointmentId String      @id // This is Appointment.appointmentId (UUID)
-    appointment   Appointment @relation(fields: [appointmentId], references: [appointmentId], onDelete: Cascade, onUpdate: Cascade)
-    borrowDate    DateTime    @db.Date
-    returnDate    DateTime?   @db.Date   // CHECK (ReturnDate IS NULL OR ReturnDate >= BorrowDate)
-    borrowedBooks BookAppointmentBorrowsBook[]
-
-    @@map("BookAppointments")
-}
-
 model SportAppointment {
-    appointmentId String      @id // This is Appointment.appointmentId (UUID)
+    appointmentId String      @id @map("Appointment_ID") // DDL: "Appointment_ID" uuid PRIMARY KEY REFERENCES "APPOINTMENT"
     appointment   Appointment @relation(fields: [appointmentId], references: [appointmentId], onDelete: Cascade, onUpdate: Cascade)
-    sportType     String      @map("Sport_Type")
-    startTime     DateTime    @db.Time
-    endTime       DateTime    @db.Time   // CHECK (EndTime > StartTime)
+    sportType     String      @map("Sport_Type") // DDL: "Sport_Type" varchar(80) NOT NULL
+    startTime     DateTime    @db.Time @map("StartTime")  // DDL: "StartTime" time NOT NULL
+    endTime       DateTime    @db.Time @map("EndTime")    // DDL: "EndTime" time NOT NULL
 
-    @@map("SportAppointments")
+    @@map("SPORTAPPOINTMENT")
 }
 
 model HealthAppointment {
-    appointmentId String      @id // This is Appointment.appointmentId (UUID)
+    appointmentId String      @id @map("Appointment_ID") // DDL: "Appointment_ID" uuid PRIMARY KEY REFERENCES "APPOINTMENT"
     appointment   Appointment @relation(fields: [appointmentId], references: [appointmentId], onDelete: Cascade, onUpdate: Cascade)
-    healthType    String      @map("Health_Type")
-    startTime     DateTime    @db.Time
-    endTime       DateTime    @db.Time   // CHECK (EndTime > StartTime)
+    healthType    String      @map("Health_Type") // DDL: "Health_Type" varchar(80) NOT NULL
+    startTime     DateTime    @db.Time @map("StartTime")   // DDL: "StartTime" time NOT NULL
+    endTime       DateTime    @db.Time @map("EndTime")    // DDL: "EndTime" time NOT NULL
 
-    @@map("HealthAppointments")
+    @@map("HEALTHAPPOINTMENT")
 }
 
 // M:N Relationship Tables & Multi-valued Attribute Tables
 
-// Links User (NextAuth) to Route
+// Links User (NextAuth) to Route for Favorites
 model UserFavoriteRoute {
-    userId  String // This is User.id (cuid)
-    user    User   @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-    routeId String // This is Route.routeId (UUID)
-    route   Route  @relation(fields: [routeId], references: [routeId], onDelete: Cascade, onUpdate: Cascade)
-    isFavorite Boolean @default(true) @map("Favorite_Route") // Added based on user DDL
+    userId     String  @map("UserID")   // DDL: "UserID" varchar(25) REFERENCES "USER"
+    user       User    @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+    routeId    String  @map("Route_ID") // DDL: "Route_ID" uuid REFERENCES "ROUTE"
+    route      Route   @relation(fields: [routeId], references: [routeId], onDelete: Cascade, onUpdate: Cascade)
+    isFavorite Boolean @default(true) @map("Favorite_Route") // DDL: "Favorite_Route" boolean NOT NULL DEFAULT true
 
-    @@id([userId, routeId])
-    @@map("FAVORITE_ROUTES") // Renamed mapping
+    @@id([userId, routeId]) // DDL: PRIMARY KEY ("UserID","Route_ID")
+    @@map("FAVORITE_ROUTES")
 }
 
-// Links Staff (-> User) to Route
+// Links Staff (-> User) to Route for Management (DDL "MANAGES")
 model StaffManagesRoute {
-    staffId String // This is Staff.userId (-> User.id - cuid)
+    staffId String @map("UserID")   // DDL: "UserID" varchar(25) REFERENCES "USER" (interpreted as StaffID)
     staff   Staff  @relation(fields: [staffId], references: [userId], onDelete: Cascade, onUpdate: Cascade)
-    routeId String // This is Route.routeId (UUID)
+    routeId String @map("Route_ID") // DDL: "Route_ID" uuid REFERENCES "ROUTE"
     route   Route  @relation(fields: [routeId], references: [routeId], onDelete: Cascade, onUpdate: Cascade)
 
-    @@id([staffId, routeId])
-    @@map("Staff_Manages_Routes")
+    @@id([staffId, routeId]) // DDL: PRIMARY KEY ("UserID","Route_ID")
+    @@map("MANAGES")
 }
 
+// Links User to Route for "LOOKS" table
+model UserLooksAtRoute {
+  userId  String @map("UserID")   // DDL: "UserID" varchar(25) REFERENCES "USER"
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  routeId String @map("Route_ID") // DDL: "Route_ID" uuid REFERENCES "ROUTE"
+  route   Route  @relation(fields: [routeId], references: [routeId], onDelete: Cascade, onUpdate: Cascade)
+
+  @@id([userId, routeId]) // DDL: PRIMARY KEY ("UserID","Route_ID")
+  @@map("LOOKS")
+}
+
+
+// DDL "DRIVE_IN" table (Bus_Drives_Route)
 model BusDrivesRoute {
-    vehicleId           String   // Bus.vehicleId
-    bus                 Bus      @relation(fields: [vehicleId], references: [vehicleId], onDelete: Cascade, onUpdate: Cascade)
-    routeId             String   // Route.routeId (UUID)
-    route               Route    @relation(fields: [routeId], references: [routeId], onDelete: Cascade, onUpdate: Cascade)
-    driveTimestamp      DateTime @default(now())
-    estimatedArrivalTime DateTime?
+    vehicleId String @map("Vehicle_ID") // DDL: "Vehicle_ID" varchar(40) REFERENCES "BUS"
+    bus       Bus    @relation(fields: [vehicleId], references: [vehicleId], onDelete: Cascade, onUpdate: Cascade)
+    routeId   String @map("Route_ID")   // DDL: "Route_ID" uuid REFERENCES "ROUTE"
+    route     Route  @relation(fields: [routeId], references: [routeId], onDelete: Cascade, onUpdate: Cascade)
 
-    @@id([vehicleId, routeId, driveTimestamp])
-    @@index([routeId, driveTimestamp(sort: Desc)])
-    @@map("Bus_Drives_Routes")
+    @@id([vehicleId, routeId]) // DDL: PRIMARY KEY ("Vehicle_ID","Route_ID")
+    @@map("DRIVE_IN")
 }
 
+// DDL "HAS" table (Route_Station)
 model RouteStation {
-    routeId   String  // Route.routeId (UUID)
+    routeId   String  @map("Route_ID")   // DDL: "Route_ID" uuid REFERENCES "ROUTE"
     route     Route   @relation(fields: [routeId], references: [routeId], onDelete: Cascade, onUpdate: Cascade)
-    stationId String  // Station.stationId (UUID)
+    stationId String  @map("Station_ID") // DDL: "Station_ID" uuid REFERENCES "STATION"
     station   Station @relation(fields: [stationId], references: [stationId], onDelete: Cascade, onUpdate: Cascade)
-    stopOrder Int     // CHECK (StopOrder > 0)
+    stopOrder Int     @map("Order")      // DDL: "Order" int NOT NULL
 
-    @@id([routeId, stationId])
-    @@unique([routeId, stopOrder])
-    @@map("Route_Stations")
+    @@id([routeId, stationId])      // DDL: PRIMARY KEY ("Route_ID","Station_ID")
+    @@unique([routeId, stopOrder])  // DDL: UNIQUE ("Route_ID","Order")
+    @@map("HAS")
 }
 
+// DDL "PART_OF" table (Menu_Dishes)
 model MenuDish {
-    menuId String // Menu.menuId (UUID)
+    menuId String @map("Menu_ID") // DDL: "Menu_ID" uuid REFERENCES "MENU"
     menu   Menu   @relation(fields: [menuId], references: [menuId], onDelete: Cascade, onUpdate: Cascade)
-    dishId String // Dish.dishId (UUID)
+    dishId String @map("Dish_ID") // DDL: "Dish_ID" uuid REFERENCES "DISH"
     dish   Dish   @relation(fields: [dishId], references: [dishId], onDelete: Cascade, onUpdate: Cascade)
 
-    @@id([menuId, dishId])
-    @@map("Menu_Dishes")
+    @@id([menuId, dishId]) // DDL: PRIMARY KEY ("Menu_ID","Dish_ID")
+    @@map("PART_OF")
 }
 
-model BookAppointmentBorrowsBook {
-    appointmentId   String          // BookAppointment.appointmentId (-> Appointment.appointmentId - UUID)
-    bookAppointment BookAppointment @relation(fields: [appointmentId], references: [appointmentId], onDelete: Cascade, onUpdate: Cascade)
-    isbn            String          @map("ISBN") // Book.isbn
-    borrowQuantity  Int             @default(1) // Added based on user schema
-    book            Book            @relation(fields: [isbn], references: [isbn], onDelete: Restrict, onUpdate: Cascade)
+// DDL "BOOKAPPOINTMENT" table (BookBorrowRecord)
+model BookBorrowRecord {
+    isbn            String      @map("BISBN")         // DDL: "BISBN" varchar(20) REFERENCES "BOOK"
+    book            Book        @relation(fields: [isbn], references: [isbn], onDelete: Restrict, onUpdate: Cascade)
+    appointmentId   String      @map("Appointment_ID") // DDL: "Appointment_ID" uuid REFERENCES "APPOINTMENT"
+    appointment     Appointment @relation(fields: [appointmentId], references: [appointmentId], onDelete: Cascade, onUpdate: Cascade)
+    borrowDate      DateTime    @db.Date @map("BorrowDate")  // DDL: "BorrowDate" date NOT NULL
+    returnDate      DateTime?   @db.Date @map("ReturnDate")  // DDL: "ReturnDate" date
+    borrowQuantity  Int         @default(1) @map("Borrow_Quantity") // DDL: "Borrow_Quantity" int NOT NULL DEFAULT 1
 
-    @@id([appointmentId, isbn])
-    @@map("BookAppointment_Borrows_Book")
+    @@id([isbn, appointmentId]) // DDL: PRIMARY KEY ("BISBN","Appointment_ID")
+    @@map("BOOKAPPOINTMENT")
 }
 
 // ENUMs
@@ -383,8 +382,18 @@ enum AppointmentStatus {
     NoShow
 }
 
-// Note on Views (v_Daily_Revenue):
-// Prisma does not create/manage database views. Create this with a raw SQL migration.
+// Note on Views (v_Daily_Revenue from original schema):
+// Prisma does not create/manage database views. Create this with a raw SQL migration if needed.
 // CREATE VIEW "v_Daily_Revenue" AS
-// SELECT s."MenuID", m."MenuOfferingName", m."MenuDate", m."Price", s."Num_Sold", (s."Num_Sold" * m."Price") AS "Daily_Revenue"
-// FROM   "Sales" s JOIN "Menus" m USING ("MenuID");
+// SELECT s."MMenu_ID", m."Menu_Name", sa."Date", m."Price", sa."Num_Sold", (sa."Num_Sold" * m."Price") AS "Daily_Revenue"
+// FROM "SALES" sa JOIN "MENU" m ON sa."MMenu_ID" = m."Menu_ID";
+// (Adjusted view based on new table/column names from DDL)
+
+// Removed Student relations from Admin model (AdminManagesStudent, AdminManagesStaff)
+// These are now UserManagesStudent, UserManagesStaff on Student and Staff models respectively, relating to User.
+// Removed BookAppointment model as its details are merged into BookBorrowRecord.
+// Removed DepositTransaction model.
+// Added UserManagesRoute for DDL "MANAGES" if it means any user, currently using StaffManagesRoute.
+// User.id is now String @id @map("UserID") and not auto-generated with cuid/uuid.
+// FKs to User.id are also String and map to the respective UserID columns.
+// UUID PKs now use @default(uuid()).
