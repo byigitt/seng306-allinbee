@@ -123,6 +123,7 @@ model Staff {
 model DigitalCard {
     userId            String              @id // This is Student.userId, which is User.id
     student           Student             @relation(fields: [userId], references: [userId], onDelete: Cascade, onUpdate: Cascade)
+    cardNo            String              @unique // Added based on user schema
     balance           Decimal             @default(0.00) @db.Decimal(10, 2) // CHECK (Balance >= 0)
     cardCreationDate  DateTime            @default(now()) @map("Card_CreationDate")
     depositTransactions DepositTransaction[]
@@ -205,14 +206,14 @@ model Menu {
     menuId           String     @id @default(uuid()) @map("MenuID") // Kept as UUID
     managedByStaffId String     @map("ManagedBy_StaffID") // This is Staff.userId (-> User.id)
     managedByStaff   Staff      @relation("StaffManagesMenu", fields: [managedByStaffId], references: [userId], onDelete: Restrict, onUpdate: Cascade)
-    menuDate         DateTime   @db.Date
-    menuOfferingName String
+    menuDate         DateTime   @db.Date // User to confirm if this should be dropped
+    menuName         String     @map("Menu_Name") // Renamed from menuOfferingName
     price            Decimal    @db.Decimal(10, 2) // CHECK (Price >= 0)
     qrCodes          QRCode[]
     sale             Sale?
     menuDishes       MenuDish[]
 
-    @@unique([menuDate, menuOfferingName], map: "uq_menu_day_offering")
+    @@unique([menuDate, menuName], map: "uq_menu_day_offering")
     @@index([menuDate])
     @@map("Menus")
 }
@@ -224,9 +225,11 @@ model QRCode {
     digitalCard   DigitalCard @relation(fields: [userId], references: [userId], onDelete: Cascade, onUpdate: Cascade)
     menuId        String?     // Refers to Menu.menuId (UUID)
     menu          Menu?       @relation(fields: [menuId], references: [menuId], onDelete: SetNull, onUpdate: Cascade)
+    cardNo        String?     @map("Card_NO") // Added based on user DDL
     createDate    DateTime    @default(now()) @map("Create_Date")
     expiredDate   DateTime    @map("Expired_Date")
-    remainingTime String?     // SQL 'INTERVAL' - represent as String or Int (seconds)
+    paysForDate   DateTime?   @map("PaysFor_Date") // Added based on user DDL
+    remainingTime String?     @deprecated("Not in DDL") // Marked as deprecated
 
     @@index([userId])
     @@map("QRCodes")
@@ -311,9 +314,10 @@ model UserFavoriteRoute {
     user    User   @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
     routeId String // This is Route.routeId (UUID)
     route   Route  @relation(fields: [routeId], references: [routeId], onDelete: Cascade, onUpdate: Cascade)
+    isFavorite Boolean @default(true) @map("Favorite_Route") // Added based on user DDL
 
     @@id([userId, routeId])
-    @@map("User_Favorite_Routes")
+    @@map("FAVORITE_ROUTES") // Renamed mapping
 }
 
 // Links Staff (-> User) to Route
@@ -366,6 +370,7 @@ model BookAppointmentBorrowsBook {
     appointmentId   String          // BookAppointment.appointmentId (-> Appointment.appointmentId - UUID)
     bookAppointment BookAppointment @relation(fields: [appointmentId], references: [appointmentId], onDelete: Cascade, onUpdate: Cascade)
     isbn            String          @map("ISBN") // Book.isbn
+    borrowQuantity  Int             @default(1) // Added based on user schema
     book            Book            @relation(fields: [isbn], references: [isbn], onDelete: Restrict, onUpdate: Cascade)
 
     @@id([appointmentId, isbn])
