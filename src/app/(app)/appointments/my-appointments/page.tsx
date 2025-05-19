@@ -20,61 +20,153 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
-import { AlertTriangle, CalendarDays, Clock, Info } from "lucide-react";
+import { AlertTriangle, CalendarDays, Clock, Info, Library, Users, Dumbbell, BookHeart, HeartPulse } from "lucide-react";
 import Link from "next/link";
+import { api } from "@/trpc/react";
+import type { AppRouter } from "@/server/api/root";
+import type { inferRouterOutputs } from "@trpc/server";
+import { useState } from "react";
 
-// Mock data
-const mockAppointments = [
-	{
-		id: "appt_001",
-		serviceName: "Sports Facility - Basketball Court",
-		date: "2024-07-20",
-		time: "14:00 - 15:00",
-		status: "Upcoming",
-		location: "Sports Hall Court A",
-		notes: "Bringing my own ball.",
-	},
-	{
-		id: "appt_002",
-		serviceName: "Health Center - General Checkup",
-		date: "2024-07-22",
-		time: "10:30",
-		status: "Upcoming",
-		location: "Health Center, Room 3",
-		notes: "Annual checkup.",
-	},
-	{
-		id: "appt_003",
-		serviceName: "Library Study Room 1",
-		date: "2024-07-15",
-		time: "09:00 - 12:00",
-		status: "Past",
-		location: "Library, 2nd Floor",
-		notes: "Group study session.",
-	},
-	{
-		id: "appt_004",
-		serviceName: "Academic Advising with Prof. Elara",
-		date: "2024-07-10",
-		time: "11:00",
-		status: "Cancelled",
-		location: "Faculty Building, Office 101",
-		notes: "Rescheduled for next week.",
-	},
-];
+type RouterOutputs = inferRouterOutputs<AppRouter>;
+type Appointment = RouterOutputs["appointments"]["listMyAppointments"]["appointments"][number];
+
+function getAppointmentTypeAndDetails(appointment: Appointment): {
+	typeName: string;
+	specificDetails: string;
+	Icon: React.ElementType;
+} {
+	if (appointment.bookBorrowRecords && appointment.bookBorrowRecords.length > 0) {
+		const bookTitles = appointment.bookBorrowRecords.map((b: { book: { title: string } }) => b.book.title).join(", ");
+		return { typeName: "Library Book Borrow", specificDetails: `Books: ${bookTitles}`, Icon: Library };
+	}
+	if (appointment.sportAppointment) {
+		return { 
+			typeName: "Sports Activity", 
+			specificDetails: `Type: ${appointment.sportAppointment.sportType}, Time: ${new Date(appointment.sportAppointment.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${new Date(appointment.sportAppointment.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`, 
+			Icon: Dumbbell 
+		};
+	}
+	if (appointment.healthAppointment) {
+		return { 
+			typeName: "Health Consultation", 
+			specificDetails: `Type: ${appointment.healthAppointment.healthType}, Time: ${new Date(appointment.healthAppointment.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${new Date(appointment.healthAppointment.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`, 
+			Icon: HeartPulse 
+		};
+	}
+	return { typeName: "General Appointment", specificDetails: "Details not specified", Icon: CalendarDays };
+}
+
 
 export default function MyAppointmentsPage() {
-	const upcomingAppointments = mockAppointments.filter(
-		(a) => a.status === "Upcoming",
+	const [showAllPast, setShowAllPast] = useState(false);
+	const appointmentsQuery = api.appointments.listMyAppointments.useQuery({}); // Default take/skip
+	const cancelMutation = api.appointments.cancelAppointment.useMutation({
+		onSuccess: () => {
+			appointmentsQuery.refetch();
+		},
+		// onError: (error) => { // Handle error, e.g., show a toast notification
+		//  alert(`Failed to cancel appointment: ${error.message}`);
+		// }
+	});
+
+	const handleCancelAppointment = (appointmentId: string) => {
+		cancelMutation.mutate({ appointmentId });
+	};
+
+	if (appointmentsQuery.isLoading) {
+		return <p>Loading your appointments...</p>; // Replace with a proper spinner/skeleton UI
+	}
+
+	if (appointmentsQuery.error) {
+		return <p>Error loading appointments: {appointmentsQuery.error.message}</p>;
+	}
+
+	const allAppointments = appointmentsQuery.data?.appointments ?? [];
+	const upcomingAppointments = allAppointments.filter(
+		(a) => a.appointmentStatus === "Scheduled",
 	);
-	const pastOrCancelledAppointments = mockAppointments.filter(
-		(a) => a.status === "Past" || a.status === "Cancelled",
+	const pastOrCancelledAppointments = allAppointments.filter(
+		(a) => a.appointmentStatus !== "Scheduled",
 	);
 
-	// Placeholder for cancel action
-	const handleCancelAppointment = (appointmentId: string) => {
-		alert(`Cancelling appointment ${appointmentId} (Mock Action)`);
-		// In a real app, call API and update state
+	const displayedPastOrCancelled = showAllPast ? pastOrCancelledAppointments : pastOrCancelledAppointments.slice(0, 4);
+
+	const renderAppointmentCard = (appt: Appointment, isUpcoming: boolean) => {
+		const { typeName, specificDetails, Icon } = getAppointmentTypeAndDetails(appt);
+		return (
+			<Card key={appt.appointmentId} className={isUpcoming ? "" : "opacity-75"}>
+				<CardHeader>
+					<div className="flex items-start justify-between">
+						<CardTitle className="text-lg flex items-center">
+							<Icon className="mr-2 h-5 w-5 text-muted-foreground" /> {typeName}
+						</CardTitle>
+						<Badge 
+							variant={
+								appt.appointmentStatus === "Cancelled" || appt.appointmentStatus === "NoShow"
+									? "destructive"
+									: appt.appointmentStatus === "Completed"
+										? "secondary"
+										: "default" // Scheduled
+							}
+						>
+							{appt.appointmentStatus}
+						</Badge>
+					</div>
+					{appt.managedByStaff?.user && (
+						<CardDescription className="text-xs pt-1">
+							Staff: {appt.managedByStaff.user.name ?? `${appt.managedByStaff.user.fName} ${appt.managedByStaff.user.lName}`}
+						</CardDescription>
+					)}
+				</CardHeader>
+				<CardContent className="space-y-2 text-sm">
+					<p className="flex items-center">
+						<CalendarDays className="mr-2 h-4 w-4 text-muted-foreground" />{" "}
+						{new Date(appt.appointmentDate).toLocaleDateString("en-US", {
+							dateStyle: "long",
+						})}
+					</p>
+					<p className="flex items-center">
+						<Info className="mr-2 h-4 w-4 text-muted-foreground" />{" "}
+						{specificDetails}
+					</p>
+					{/* Add other relevant details here if needed, e.g., notes from appointment itself */}
+				</CardContent>
+				{isUpcoming && appt.appointmentStatus === "Scheduled" && (
+					<AlertDialog>
+						<AlertDialogTrigger asChild>
+							<Button
+								variant="outline"
+								className="m-4 text-red-600 hover:border-red-600 hover:text-red-700"
+								disabled={cancelMutation.isPending}
+							>
+								<AlertTriangle className="mr-2 h-4 w-4" /> {cancelMutation.isPending ? "Cancelling..." : "Cancel Appointment"}
+							</Button>
+						</AlertDialogTrigger>
+						<AlertDialogContent>
+							<AlertDialogHeader>
+								<AlertDialogTitle>
+									Are you sure you want to cancel this appointment?
+								</AlertDialogTitle>
+								<AlertDialogDescription>
+									This action cannot be undone. Cancelling: {typeName} on{" "}
+									{new Date(appt.appointmentDate).toLocaleDateString()}.
+								</AlertDialogDescription>
+							</AlertDialogHeader>
+							<AlertDialogFooter>
+								<AlertDialogCancel disabled={cancelMutation.isPending}>Keep Appointment</AlertDialogCancel>
+								<AlertDialogAction
+									onClick={() => handleCancelAppointment(appt.appointmentId)}
+									className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+									disabled={cancelMutation.isPending}
+								>
+									{cancelMutation.isPending ? "Cancelling..." : "Confirm Cancellation"}
+								</AlertDialogAction>
+							</AlertDialogFooter>
+						</AlertDialogContent>
+					</AlertDialog>
+				)}
+			</Card>
+		);
 	};
 
 	return (
@@ -90,69 +182,7 @@ export default function MyAppointmentsPage() {
 				<h2 className="mb-4 font-semibold text-xl">Upcoming Appointments</h2>
 				{upcomingAppointments.length > 0 ? (
 					<div className="grid gap-4 md:grid-cols-2">
-						{upcomingAppointments.map((appt) => (
-							<Card key={appt.id}>
-								<CardHeader>
-									<CardTitle className="text-lg">{appt.serviceName}</CardTitle>
-									<Badge>{appt.status}</Badge>
-								</CardHeader>
-								<CardContent className="space-y-2 text-sm">
-									<p className="flex items-center">
-										<CalendarDays className="mr-2 h-4 w-4 text-muted-foreground" />{" "}
-										{new Date(appt.date).toLocaleDateString("en-US", {
-											dateStyle: "long",
-										})}
-									</p>
-									<p className="flex items-center">
-										<Clock className="mr-2 h-4 w-4 text-muted-foreground" />{" "}
-										{appt.time}
-									</p>
-									{appt.location && (
-										<p className="flex items-center">
-											<Info className="mr-2 h-4 w-4 text-muted-foreground" />{" "}
-											Location: {appt.location}
-										</p>
-									)}
-									{appt.notes && (
-										<p className="mt-1 text-muted-foreground text-xs">
-											Notes: {appt.notes}
-										</p>
-									)}
-								</CardContent>
-								<AlertDialog>
-									<AlertDialogTrigger asChild>
-										<Button
-											variant="outline"
-											className="m-4 text-red-600 hover:border-red-600 hover:text-red-700"
-										>
-											<AlertTriangle className="mr-2 h-4 w-4" /> Cancel
-											Appointment
-										</Button>
-									</AlertDialogTrigger>
-									<AlertDialogContent>
-										<AlertDialogHeader>
-											<AlertDialogTitle>
-												Are you sure you want to cancel?
-											</AlertDialogTitle>
-											<AlertDialogDescription>
-												This action cannot be undone. Cancelling this
-												appointment for {appt.serviceName} on{" "}
-												{new Date(appt.date).toLocaleDateString()}.
-											</AlertDialogDescription>
-										</AlertDialogHeader>
-										<AlertDialogFooter>
-											<AlertDialogCancel>Keep Appointment</AlertDialogCancel>
-											<AlertDialogAction
-												onClick={() => handleCancelAppointment(appt.id)}
-												className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-											>
-												Confirm Cancellation
-											</AlertDialogAction>
-										</AlertDialogFooter>
-									</AlertDialogContent>
-								</AlertDialog>
-							</Card>
-						))}
+						{upcomingAppointments.map(appt => renderAppointmentCard(appt, true))}
 					</div>
 				) : (
 					<p className="text-muted-foreground">
@@ -162,48 +192,17 @@ export default function MyAppointmentsPage() {
 			</section>
 
 			<section>
-				<h2 className="mb-4 font-semibold text-xl">
-					Past & Cancelled Appointments
-				</h2>
-				{pastOrCancelledAppointments.length > 0 ? (
+				<div className="flex items-center justify-between mb-4">
+					<h2 className="font-semibold text-xl">Past & Cancelled Appointments</h2>
+					{pastOrCancelledAppointments.length > 4 && (
+						<Button variant="link" onClick={() => setShowAllPast(!showAllPast)}>
+							{showAllPast ? "Show Less" : "Show All"}
+						</Button>
+					)}
+				</div>
+				{displayedPastOrCancelled.length > 0 ? (
 					<div className="grid gap-4 md:grid-cols-2">
-						{pastOrCancelledAppointments.map((appt) => (
-							<Card key={appt.id} className="opacity-75">
-								<CardHeader>
-									<CardTitle className="text-lg">{appt.serviceName}</CardTitle>
-									<Badge
-										variant={
-											appt.status === "Cancelled" ? "destructive" : "secondary"
-										}
-									>
-										{appt.status}
-									</Badge>
-								</CardHeader>
-								<CardContent className="space-y-2 text-sm">
-									<p className="flex items-center">
-										<CalendarDays className="mr-2 h-4 w-4 text-muted-foreground" />{" "}
-										{new Date(appt.date).toLocaleDateString("en-US", {
-											dateStyle: "long",
-										})}
-									</p>
-									<p className="flex items-center">
-										<Clock className="mr-2 h-4 w-4 text-muted-foreground" />{" "}
-										{appt.time}
-									</p>
-									{appt.location && (
-										<p className="flex items-center">
-											<Info className="mr-2 h-4 w-4 text-muted-foreground" />{" "}
-											Location: {appt.location}
-										</p>
-									)}
-									{appt.notes && (
-										<p className="mt-1 text-muted-foreground text-xs">
-											Notes: {appt.notes}
-										</p>
-									)}
-								</CardContent>
-							</Card>
-						))}
+						{displayedPastOrCancelled.map(appt => renderAppointmentCard(appt, false))}
 					</div>
 				) : (
 					<p className="text-muted-foreground">
