@@ -206,15 +206,13 @@ model Menu {
     menuId           String     @id @default(uuid()) @map("MenuID") // Kept as UUID
     managedByStaffId String     @map("ManagedBy_StaffID") // This is Staff.userId (-> User.id)
     managedByStaff   Staff      @relation("StaffManagesMenu", fields: [managedByStaffId], references: [userId], onDelete: Restrict, onUpdate: Cascade)
-    menuDate         DateTime   @db.Date // User to confirm if this should be dropped
     menuName         String     @map("Menu_Name") // Renamed from menuOfferingName
     price            Decimal    @db.Decimal(10, 2) // CHECK (Price >= 0)
     qrCodes          QRCode[]
     sale             Sale?
     menuDishes       MenuDish[]
 
-    @@unique([menuDate, menuName], map: "uq_menu_day_offering")
-    @@index([menuDate])
+    @@unique([menuName, managedByStaffId, price], map: "uq_menu_details") // Adjusted unique constraint
     @@map("Menus")
 }
 
@@ -229,7 +227,7 @@ model QRCode {
     createDate    DateTime    @default(now()) @map("Create_Date")
     expiredDate   DateTime    @map("Expired_Date")
     paysForDate   DateTime?   @map("PaysFor_Date") // Added based on user DDL
-    remainingTime String?     @deprecated("Not in DDL") // Marked as deprecated
+    remainingTime String?
 
     @@index([userId])
     @@map("QRCodes")
