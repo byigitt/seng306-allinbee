@@ -44,7 +44,7 @@ export default function EtasPage() {
                 <label htmlFor="route-select" className="text-sm font-medium">Route</label>
                 <Select>
                     <SelectTrigger id="route-select">
-                        <SelectValue placeholder="Select a bus route" />
+                        <SelectValue placeholder="Select a bus route"/>
                     </SelectTrigger>
                     <SelectContent>
                         {mockRoutes.map(route => (
@@ -72,43 +72,67 @@ export default function EtasPage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="rounded-xl border border-border shadow-lg">
         <CardHeader>
-          <CardTitle>Estimated Arrival Times</CardTitle>
-          <CardDescription>ETAs for selected station (mock data).</CardDescription>
+          <CardTitle className="text-lg font-bold">Estimated Arrival Times</CardTitle>
+          <CardDescription className="text-sm">ETAs for selected station (mock data).</CardDescription>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Bus ID</TableHead>
-                <TableHead>Route</TableHead>
-                <TableHead>Destination Station</TableHead>
-                <TableHead className="text-right">ETA</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {mockEtas.map((eta, index) => (
-                <TableRow key={index}>
-                  <TableCell>{eta.busId}</TableCell>
-                  <TableCell>{eta.routeName}</TableCell>
-                  <TableCell>{eta.stationName}</TableCell>
-                  <TableCell className="text-right font-medium">{eta.eta}</TableCell>
-                </TableRow>
-              ))}
-              {mockEtas.length === 0 && (
+          {/* Desktop Table */}
+          <div className="hidden md:block overflow-x-auto">
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center text-muted-foreground">
-                    Select a route and station to see ETAs.
-                  </TableCell>
+                  <TableHead>Route</TableHead>
+                  <TableHead>Destination Station</TableHead>
+                  <TableHead className="text-right">ETA</TableHead>
                 </TableRow>
-              )}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {mockEtas.map((eta) => (
+                  <TableRow key={eta.busId} className="even:bg-muted/40 hover:bg-accent/40 transition-colors">
+                    <TableCell className="font-medium">{eta.routeName}</TableCell>
+                    <TableCell>{eta.stationName}</TableCell>
+                    <TableCell className="text-right">
+                      <span className="inline-block rounded bg-green-600/80 px-2 py-1 text-xs font-bold text-white">
+                        {eta.eta}
+                      </span>
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {mockEtas.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={3} className="text-center text-muted-foreground">
+                      Select a route and station to see ETAs.
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+          {/* Mobile List */}
+          <div className="flex flex-col gap-3 md:hidden">
+            {mockEtas.length === 0 && (
+              <div className="text-center text-muted-foreground py-4">
+                Select a route and station to see ETAs.
+              </div>
+            )}
+            {mockEtas.map((eta) => (
+              <div key={eta.busId} className="flex items-center justify-between rounded-lg bg-muted/40 px-4 py-3 shadow-sm">
+                <div className="flex flex-col">
+                  <span className="font-semibold text-sm text-foreground">{eta.routeName}</span>
+                  <span className="text-xs text-muted-foreground">{eta.stationName}</span>
+                </div>
+                <span className="ml-4 inline-block rounded bg-green-600/80 px-3 py-1 text-sm font-bold text-white">
+                  {eta.eta}
+                </span>
+              </div>
+            ))}
+          </div>
         </CardContent>
       </Card>
 
-      <Button variant="link" asChild className="mt-4">
+      <Button variant="link" asChild className="mt-4 mb-[80px]">
         <Link href="/ring-tracking">Back to Live Map</Link>
       </Button>
     </div>

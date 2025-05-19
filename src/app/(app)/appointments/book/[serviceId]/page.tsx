@@ -111,7 +111,7 @@ export default function BookAppointmentPage() {
           </Card>
       )}
 
-      <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+      <div className="flex flex-col gap-2 sm:flex-row sm:justify-end mb-[80px]">
         <Button variant="outline" asChild>
             <Link href="/appointments">Cancel</Link>
         </Button>

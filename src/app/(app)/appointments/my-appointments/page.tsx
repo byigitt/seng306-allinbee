@@ -145,7 +145,7 @@ export default function MyAppointmentsPage() {
         )}
       </section>
 
-      <Button variant="link" asChild className="mt-6">
+      <Button variant="link" asChild className="mt-6 mb-[80px]">
         <Link href="/appointments">Browse Services to Book</Link>
       </Button>
     </div>
