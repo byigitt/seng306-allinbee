@@ -10,8 +10,7 @@ import {
 import { CalendarCheck, Dumbbell, Library, Users } from "lucide-react";
 import Link from "next/link";
 
-// Mock Data
-const mockServices = [
+const Services = [
 	{
 		id: "sports-facility",
 		name: "Sports Facility Booking",
@@ -33,13 +32,6 @@ const mockServices = [
 		icon: Library,
 		color: "text-green-500",
 	},
-	{
-		id: "academic-advising",
-		name: "Academic Advising",
-		description: "Book a session with your academic advisor.",
-		icon: CalendarCheck,
-		color: "text-purple-500",
-	},
 ];
 
 export default function BrowseAppointmentsPage() {
@@ -58,7 +50,7 @@ export default function BrowseAppointmentsPage() {
 			</div>
 
 			<div className="mb-[80px] grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-				{mockServices.map((service) => {
+				{Services.map((service) => {
 					const Icon = service.icon;
 					return (
 						<Card key={service.id}>

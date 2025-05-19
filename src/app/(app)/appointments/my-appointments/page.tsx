@@ -25,7 +25,8 @@ import Link from "next/link";
 import { api } from "@/trpc/react";
 import type { AppRouter } from "@/server/api/root";
 import type { inferRouterOutputs } from "@trpc/server";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { toast } from "sonner";
 
 type RouterOutputs = inferRouterOutputs<AppRouter>;
 type Appointment = RouterOutputs["appointments"]["listMyAppointments"]["appointments"][number];
@@ -56,18 +57,41 @@ function getAppointmentTypeAndDetails(appointment: Appointment): {
 	return { typeName: "General Appointment", specificDetails: "Details not specified", Icon: CalendarDays };
 }
 
-
 export default function MyAppointmentsPage() {
 	const [showAllPast, setShowAllPast] = useState(false);
 	const appointmentsQuery = api.appointments.listMyAppointments.useQuery({}); // Default take/skip
 	const cancelMutation = api.appointments.cancelAppointment.useMutation({
-		onSuccess: () => {
+		onSuccess: (cancelledAppointmentData, variables) => {
+			// Find the original appointment from the query cache to get full details for the toast
+			const originalAppointment = appointmentsQuery.data?.appointments.find(
+				(appt) => appt.appointmentId === variables.appointmentId
+			);
+
+			let toastDescription = `The appointment on ${new Date(cancelledAppointmentData.appointmentDate).toLocaleDateString()} has been cancelled.`;
+			if (originalAppointment) {
+				toastDescription = `The appointment for ${getAppointmentTypeAndDetails(originalAppointment).typeName} on ${new Date(originalAppointment.appointmentDate).toLocaleDateString()} has been cancelled.`;
+			}
+
+			toast.success("Appointment Cancelled", {
+				description: toastDescription,
+			});
 			appointmentsQuery.refetch();
 		},
-		// onError: (error) => { // Handle error, e.g., show a toast notification
-		//  alert(`Failed to cancel appointment: ${error.message}`);
-		// }
+		onError: (error) => { 
+			toast.error("Cancellation Failed", {
+				description: error.message || "Could not cancel the appointment. Please try again.",
+			});
+		}
 	});
+
+	// Toast for query error
+	useEffect(() => {
+		if (appointmentsQuery.isError && appointmentsQuery.error) {
+			toast.error("Error Loading Appointments", {
+				description: appointmentsQuery.error.message || "Could not fetch your appointments.",
+			});
+		}
+	}, [appointmentsQuery.isError, appointmentsQuery.error]);
 
 	const handleCancelAppointment = (appointmentId: string) => {
 		cancelMutation.mutate({ appointmentId });

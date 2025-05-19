@@ -50,12 +50,6 @@ const serviceDefinitions: {
 		requiresNotes: false,
 		appointmentType: "Book", // This will be challenging with current generic page
 	},
-	"academic-advising": {
-		name: "Academic Advising Session",
-		description: "Book a slot with your advisor. (Not yet implemented)",
-		requiresNotes: true,
-		appointmentType: "Other",
-	},
 };
 
 // Helper to convert "HH:MM AM/PM" to "HH:MM" (24-hour)
@@ -123,9 +117,21 @@ export default function BookAppointmentPage() {
 	
 	const createAppointmentMutation = api.appointments.createAppointment.useMutation({
 		onSuccess: (data) => {
-			toast.success(`Your appointment for ${serviceInfo?.name} on ${selectedDate?.toLocaleDateString()} at ${selectedTimeSlot} is scheduled.`);
-			// Navigate to my-appointments page or show a success message
-			router.push("/appointments/my-appointments"); 
+			toast.success(`Appointment Confirmed!`, {
+				description: `Your booking for ${serviceInfo?.name} on ${selectedDate?.toLocaleDateString()} at ${selectedTimeSlot} is scheduled.`,
+				action: {
+					label: "View My Appointments",
+					onClick: () => router.push("/appointments/my-appointments"),
+				},
+			});
+			// Reset form state
+			setSelectedDate(new Date()); // Or undefined, depending on desired UX
+			setSelectedTimeSlot(null);
+			setNotes("");
+			// Refetch available slots for the newly selected date (or current date if setSelectedDate(new Date()))
+			// This will happen automatically if selectedDate changes and the query is enabled
+      // Or explicitly: availableSlotsQuery.refetch(); 
+      // However, since selectedDate is reset, the query will refetch for the new date if it's enabled for it.
 		},
 		// onError callback removed, will rely on createAppointmentMutation.isError for UI updates
 		// Toast for mutation error can be triggered in useEffect or handleBooking based on isError and error state
