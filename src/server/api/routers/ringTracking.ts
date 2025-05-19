@@ -47,8 +47,8 @@ export const ringTrackingRouter = createTRPCRouter({
     .input(
       z.object({
         filterByName: z.string().optional(),
-        take: z.number().int().optional(),
-        skip: z.number().int().optional(),
+        take: z.number().int().optional().default(10),
+        skip: z.number().int().optional().default(0),
       })
     )
     .query(async ({ ctx, input }) => {
@@ -64,9 +64,15 @@ export const ringTrackingRouter = createTRPCRouter({
             include: { station: true },
             orderBy: { stopOrder: "asc" },
           },
-          staffManages: {
-            select: {
-              staff: { select: { user: { select: { id: true, name: true } } } },
+          managedByStaff: {
+            include: {
+              staff: {
+                include: {
+                  user: {
+                    select: { id: true, name: true, fName: true, lName: true },
+                  },
+                },
+              },
             },
             take: 5,
           }, // Show a few managing staff
@@ -90,7 +96,7 @@ export const ringTrackingRouter = createTRPCRouter({
             include: { station: true },
             orderBy: { stopOrder: "asc" },
           },
-          staffManages: {
+          managedByStaff: {
             include: {
               staff: {
                 select: {
@@ -101,6 +107,11 @@ export const ringTrackingRouter = createTRPCRouter({
               },
             },
           },
+          drivenByBuses: { include: { bus: true }, take: 5 }, // Added to see some buses on this route
+          userFavorites: {
+            include: { user: { select: { id: true, name: true } } },
+            take: 5,
+          }, // Added to see some users who favorited
         },
       });
     }),
@@ -119,25 +130,23 @@ export const ringTrackingRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       const { routeId, departureTimes, routeName } = input;
       return ctx.db.$transaction(async (prisma) => {
+        const updateData: Prisma.RouteUpdateInput = {};
+        if (routeName) {
+          updateData.routeName = routeName;
+        }
         if (departureTimes !== undefined) {
           await prisma.routeDepartureTime.deleteMany({ where: { routeId } });
           if (departureTimes.length > 0) {
-            await prisma.routeDepartureTime.createMany({
-              data: departureTimes.map((time) => ({
-                routeId: routeId,
+            updateData.departureTimes = {
+              create: departureTimes.map((time) => ({
                 departureTime: new Date(`1970-01-01T${time}:00Z`),
               })),
-            });
+            };
           }
         }
-        if (routeName) {
-          await prisma.route.update({
-            where: { routeId },
-            data: { routeName },
-          });
-        }
-        return prisma.route.findUniqueOrThrow({
+        return prisma.route.update({
           where: { routeId },
+          data: updateData,
           include: {
             departureTimes: true,
             routeStations: {
@@ -175,8 +184,8 @@ export const ringTrackingRouter = createTRPCRouter({
     .input(
       z.object({
         filterByName: z.string().optional(),
-        take: z.number().int().optional(),
-        skip: z.number().int().optional(),
+        take: z.number().int().optional().default(10),
+        skip: z.number().int().optional().default(0),
       })
     )
     .query(async ({ ctx, input }) => {
@@ -202,7 +211,13 @@ export const ringTrackingRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       return ctx.db.station.findUniqueOrThrow({
         where: { stationId: input.stationId },
-        // include: { routeStations: { include: {route: true}}} // If needed to show routes serving this station
+        include: {
+          routeStations: {
+            include: { route: true },
+            orderBy: { route: { routeName: "asc" } },
+            take: 10,
+          },
+        }, // Show routes serving this station
       });
     }),
 
@@ -281,53 +296,101 @@ export const ringTrackingRouter = createTRPCRouter({
   // --- Bus Management --- (Section 3.4.3 PRD)
   // Assuming updateBusLocation would be called by a trusted service/system, not a typical user role.
   // Potentially a separate, more restricted procedure or a non-tRPC endpoint for IoT devices.
-  updateBusLocation: publicProcedure // Or a more restricted system procedure
+  createOrUpdateBus: staffProcedure
     .input(
       z.object({
         vehicleId: z.string().min(1),
-        latitude: decimalSchema,
-        longitude: decimalSchema,
-        // timestamp: z.string().datetime(), // Prisma handles lastUpdateTime automatically if @updatedAt
+        liveLatitude: decimalSchema.optional(),
+        liveLongitude: decimalSchema.optional(),
+        // routeIds: z.array(z.string().uuid()).optional() // For linking bus to routes via BusDrivesRoute
       })
     )
     .mutation(async ({ ctx, input }) => {
+      const { vehicleId, ...data } = input;
       return ctx.db.bus.upsert({
+        where: { vehicleId },
+        create: { vehicleId, ...data },
+        update: data,
+        include: { drivesRoutes: { include: { route: true } } }, // Reverted to drivesRoutes
+      });
+    }),
+
+  listBuses: protectedProcedure
+    .input(
+      z.object({
+        take: z.number().int().optional().default(10),
+        skip: z.number().int().optional().default(0),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const buses = await ctx.db.bus.findMany({
+        include: { drivesRoutes: { include: { route: true } } }, // Reverted to drivesRoutes
+        take: input.take,
+        skip: input.skip,
+        orderBy: { vehicleId: "asc" },
+      });
+      const totalCount = await ctx.db.bus.count();
+      return { buses, totalCount };
+    }),
+
+  getBus: protectedProcedure
+    .input(z.object({ vehicleId: z.string().min(1) }))
+    .query(async ({ ctx, input }) => {
+      return ctx.db.bus.findUniqueOrThrow({
         where: { vehicleId: input.vehicleId },
-        update: {
-          liveLatitude: input.latitude,
-          liveLongitude: input.longitude,
-          lastUpdateTime: new Date(), // Explicitly set update time
-        },
-        create: {
-          vehicleId: input.vehicleId,
-          liveLatitude: input.latitude,
-          liveLongitude: input.longitude,
-          lastUpdateTime: new Date(),
-        },
+        include: { drivesRoutes: { include: { route: true } } }, // Reverted to drivesRoutes
+      });
+    }),
+
+  deleteBus: adminProcedure
+    .input(z.object({ vehicleId: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      // Cascades should handle BusDrivesRoute
+      return ctx.db.bus.delete({ where: { vehicleId: input.vehicleId } });
+    }),
+
+  // Link Bus to Routes
+  updateBusRoutes: staffProcedure
+    .input(
+      z.object({
+        vehicleId: z.string().min(1),
+        routeIds: z.array(z.string().uuid()), // Full list of routes this bus drives
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      return ctx.db.$transaction(async (prisma) => {
+        await prisma.busDrivesRoute.deleteMany({
+          where: { vehicleId: input.vehicleId },
+        });
+        if (input.routeIds.length > 0) {
+          await prisma.busDrivesRoute.createMany({
+            data: input.routeIds.map((routeId) => ({
+              vehicleId: input.vehicleId,
+              routeId,
+            })),
+          });
+        }
+        return prisma.bus.findUniqueOrThrow({
+          where: { vehicleId: input.vehicleId },
+          include: { drivesRoutes: { include: { route: true } } }, // Reverted to drivesRoutes
+        });
       });
     }),
 
   getLiveBusLocations: protectedProcedure
     .input(
       z.object({
-        routeId: z.string().uuid().optional(), // Optionally filter by buses currently on a specific route
-        minutesOld: z.number().int().positive().default(5), // How recent the update should be
+        routeId: z.string().uuid().optional(),
       })
     )
     .query(async ({ ctx, input }) => {
-      const sinceTime = new Date(Date.now() - input.minutesOld * 60 * 1000);
       const whereClause: Prisma.BusWhereInput = {
-        lastUpdateTime: { gte: sinceTime },
-        // If routeId is provided, we need to find buses associated with that route via BusDrivesRoute
-        // This requires a more complex query if buses aren't directly linked to a single active route on the Bus model.
-        // For simplicity, if Bus model had an `currentRouteId`, it would be easier.
-        // Assuming BusDrivesRoute is the source of truth for current bus-route assignment:
+        liveLatitude: { not: null }, // Only buses with a reported latitude
+        liveLongitude: { not: null }, // Only buses with a reported longitude
         ...(input.routeId && {
-          busDrivesRoutes: {
-            some: {
-              routeId: input.routeId,
-              // Potentially filter by most recent driveTimestamp for that route
-            },
+          drivesRoutes: {
+            // Reverted to drivesRoutes
+            some: { routeId: input.routeId },
           },
         }),
       };
@@ -335,14 +398,9 @@ export const ringTrackingRouter = createTRPCRouter({
       return ctx.db.bus.findMany({
         where: whereClause,
         include: {
-          busDrivesRoutes: input.routeId
-            ? {
-                where: { routeId: input.routeId },
-                orderBy: { driveTimestamp: "desc" },
-                take: 1,
-                include: { route: true },
-              }
-            : false, // Do not include if no specific routeId is given or include all recent for the bus
+          drivesRoutes: input.routeId // Reverted to drivesRoutes
+            ? { where: { routeId: input.routeId }, include: { route: true } }
+            : { include: { route: true }, take: 1 }, // Show one route if not filtering by specific route
         },
       });
     }),

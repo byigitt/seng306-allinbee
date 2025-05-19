@@ -6,6 +6,8 @@ import {
 } from "@/server/api/trpc";
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
+import bcrypt from "bcryptjs";
+import cuid from "cuid";
 
 // Helper to determine user role based on included relations
 const determineUserRole = (
@@ -20,6 +22,57 @@ const determineUserRole = (
 };
 
 export const userRouter = createTRPCRouter({
+  // Register new user
+  register: publicProcedure
+    .input(
+      z.object({
+        email: z.string().email(),
+        password: z.string().min(8), // Enforce a minimum password length
+        name: z.string().optional(), // Optional: if you want to allow a display name separate from fName/lName
+        fName: z.string().min(1),
+        lName: z.string().min(1),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { email, password, name, fName, lName } = input;
+
+      // Check if user already exists
+      const existingUser = await ctx.db.user.findUnique({
+        where: { email },
+      });
+
+      if (existingUser) {
+        throw new Error("User with this email already exists.");
+      }
+
+      // Hash the password
+      const hashedPassword = await bcrypt.hash(password, 10);
+
+      // Create the user
+      const newUserId = cuid();
+
+      const user = await ctx.db.user.create({
+        data: {
+          id: newUserId,
+          email,
+          password: hashedPassword,
+          name: name ?? `${fName} ${lName}`,
+          fName,
+          lName,
+          // You might want to set emailVerified to null or a specific date if you implement email verification
+        },
+      });
+
+      // You could potentially create a student/staff/admin record here too if needed
+      // Or link to an account if you are using NextAuth's Account model explicitly for credentials
+
+      return {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+      };
+    }),
+
   // Get current user's profile (merged User, Student/Admin/Staff data)
   me: protectedProcedure.query(async ({ ctx }) => {
     const user = await ctx.db.user.findUniqueOrThrow({
@@ -140,55 +193,108 @@ export const userRouter = createTRPCRouter({
         mInit: z.string().max(1).nullable().optional(),
         lName: z.string().optional(),
         phoneNumber: z.string().nullable().optional(),
-        // Role management flags (example, actual implementation depends on how you want to manage roles)
-        // isStudent: z.boolean().optional(),
-        // isAdmin: z.boolean().optional(),
-        // isStaff: z.boolean().optional(),
-        // managingAdminIdForStudent: z.string().cuid().optional(), // If student, who manages them
-        // managingAdminIdForStaff: z.string().cuid().optional(), // If staff, who manages them
+        // Role management flags
+        isStudent: z.boolean().optional(),
+        studentManagingAdminId: z.string().cuid().nullable().optional(), // Who manages this student
+        isAdmin: z.boolean().optional(),
+        isStaff: z.boolean().optional(),
+        staffManagingAdminId: z.string().cuid().nullable().optional(), // Who manages this staff member
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { userId, ...dataToUpdate } = input;
-      // const { userId, isStudent, isAdmin, isStaff, managingAdminIdForStudent, managingAdminIdForStaff ...userData } = input;
-      // Basic user data update
-      const updatedUser = await ctx.db.user.update({
-        where: { id: userId },
-        data: {
-          name: dataToUpdate.name,
-          email: dataToUpdate.email,
-          fName: dataToUpdate.fName,
-          mInit: dataToUpdate.mInit,
-          lName: dataToUpdate.lName,
-          phoneNumber: dataToUpdate.phoneNumber,
-        },
+      const {
+        userId,
+        isStudent,
+        studentManagingAdminId,
+        isAdmin,
+        isStaff,
+        staffManagingAdminId,
+        ...userData
+      } = input;
+
+      return ctx.db.$transaction(async (prisma) => {
+        // Basic user data update
+        const updatedUser = await prisma.user.update({
+          where: { id: userId },
+          data: {
+            name: userData.name,
+            email: userData.email,
+            fName: userData.fName,
+            mInit: userData.mInit,
+            lName: userData.lName,
+            phoneNumber: userData.phoneNumber,
+          },
+        });
+
+        // Role management logic
+        // Student Role
+        if (isStudent === true) {
+          await prisma.student.upsert({
+            where: { userId: userId },
+            create: {
+              userId: userId,
+              managingAdminId: studentManagingAdminId ?? undefined,
+            },
+            update: {
+              managingAdminId:
+                studentManagingAdminId === null
+                  ? null
+                  : studentManagingAdminId ?? undefined,
+            },
+          });
+        } else if (isStudent === false) {
+          await prisma.student
+            .delete({ where: { userId: userId } })
+            .catch(() => {
+              // Ignore if not found, or if cascading deletes handle parts of this.
+            });
+        }
+
+        // Admin Role
+        if (isAdmin === true) {
+          await prisma.admin.upsert({
+            where: { userId: userId },
+            create: { userId: userId },
+            update: {}, // No specific fields to update on Admin beyond linking to User
+          });
+        } else if (isAdmin === false) {
+          await prisma.admin.delete({ where: { userId: userId } }).catch(() => {
+            // Ignore if not found
+          });
+        }
+
+        // Staff Role
+        if (isStaff === true) {
+          await prisma.staff.upsert({
+            where: { userId: userId },
+            create: {
+              userId: userId,
+              managingAdminId: staffManagingAdminId ?? undefined,
+            },
+            update: {
+              managingAdminId:
+                staffManagingAdminId === null
+                  ? null
+                  : staffManagingAdminId ?? undefined,
+            },
+          });
+        } else if (isStaff === false) {
+          await prisma.staff.delete({ where: { userId: userId } }).catch(() => {
+            // Ignore if not found
+          });
+        }
+
+        // Re-fetch user with relations to return the updated role correctly
+        const userWithRelations = await prisma.user.findUniqueOrThrow({
+          where: { id: userId },
+          include: { student: true, admin: true, staff: true },
+        });
+
+        return {
+          ...userWithRelations,
+          role: determineUserRole(userWithRelations),
+        };
       });
-
-      // Placeholder for role management logic:
-      // This is where you'd handle creating/deleting/updating Student, Admin, Staff records
-      // based on isStudent, isAdmin, isStaff flags and their associated foreign keys.
-      // Example for making someone a student (simplified, needs error handling & idempotency):
-      // if (isStudent === true) {
-      //   await ctx.db.student.upsert({
-      //     where: { userId: userId },
-      //     create: { userId: userId, managingAdminId: managingAdminIdForStudent },
-      //     update: { managingAdminId: managingAdminIdForStudent }
-      //   });
-      // } else if (isStudent === false) {
-      //   await ctx.db.student.delete({ where: { userId: userId } }).catch(() => {}); // Ignore if not found
-      // }
-      // Similar logic for Admin and Staff roles.
-
-      // Re-fetch user with relations to return the updated role correctly
-      const userWithRelations = await ctx.db.user.findUniqueOrThrow({
-        where: { id: userId },
-        include: { student: true, admin: true, staff: true },
-      });
-
-      return {
-        ...userWithRelations,
-        role: determineUserRole(userWithRelations),
-      };
     }),
 
   // Admin: Delete user

@@ -3,14 +3,20 @@ import {
   createTRPCRouter,
   protectedProcedure,
   staffProcedure,
+  adminProcedure,
 } from "@/server/api/trpc";
-import type { Prisma } from "@prisma/client"; // Changed to type-only import
+import type { Prisma } from "@prisma/client";
 
 // Zod schema for positive numbers (can be used for Decimals if input is number-like)
 const positiveNumberSchema = z.preprocess(
   (val) => Number.parseFloat(String(val)),
   z.number().positive()
 );
+
+// Helper to get today's date as YYYY-MM-DD string for composite key in Sale
+const getSaleDateKey = (date: Date): Date => {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+};
 
 export const cafeteriaRouter = createTRPCRouter({
   // --- Dish Management ---
@@ -22,39 +28,34 @@ export const cafeteriaRouter = createTRPCRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      return ctx.db.dish.create({
-        data: input,
-      });
+      return ctx.db.dish.create({ data: input });
     }),
 
   listDishes: protectedProcedure
     .input(
       z.object({
         filter: z.string().optional(),
-        take: z.number().int().optional(),
-        skip: z.number().int().optional(),
+        take: z.number().int().optional().default(10),
+        skip: z.number().int().optional().default(0),
       })
     )
     .query(async ({ ctx, input }) => {
-      return ctx.db.dish.findMany({
-        where: {
-          dishName: {
-            contains: input.filter,
-            mode: "insensitive",
-          },
-        },
+      const dishes = await ctx.db.dish.findMany({
+        where: { dishName: { contains: input.filter, mode: "insensitive" } },
         take: input.take,
         skip: input.skip,
         orderBy: { dishName: "asc" },
       });
+      const totalCount = await ctx.db.dish.count({
+        where: { dishName: { contains: input.filter, mode: "insensitive" } },
+      });
+      return { dishes, totalCount };
     }),
 
   getDish: protectedProcedure
     .input(z.object({ dishId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
-      return ctx.db.dish.findUniqueOrThrow({
-        where: { dishId: input.dishId },
-      });
+      return ctx.db.dish.findUniqueOrThrow({ where: { dishId: input.dishId } });
     }),
 
   updateDish: staffProcedure
@@ -67,19 +68,19 @@ export const cafeteriaRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const { dishId, ...data } = input;
-      return ctx.db.dish.update({
-        where: { dishId },
-        data,
-      });
+      return ctx.db.dish.update({ where: { dishId }, data });
     }),
 
   deleteDish: staffProcedure
     .input(z.object({ dishId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
-      // Consider checking if dish is part of any menu first
-      return ctx.db.dish.delete({
+      const isPartOfMenu = await ctx.db.menuDish.count({
         where: { dishId: input.dishId },
       });
+      if (isPartOfMenu > 0) {
+        throw new Error("Cannot delete dish. It is part of one or more menus.");
+      }
+      return ctx.db.dish.delete({ where: { dishId: input.dishId } });
     }),
 
   // --- Menu Management ---
@@ -88,7 +89,7 @@ export const cafeteriaRouter = createTRPCRouter({
       z.object({
         menuName: z.string().min(1),
         price: positiveNumberSchema,
-        dishIds: z.array(z.string().uuid()).min(1), // Ensure dishIds are UUIDs and at least one
+        dishIds: z.array(z.string().uuid()).min(1),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -112,17 +113,14 @@ export const cafeteriaRouter = createTRPCRouter({
     .input(
       z.object({
         filterByName: z.string().optional(),
-        take: z.number().int().optional(),
-        skip: z.number().int().optional(),
+        take: z.number().int().optional().default(10),
+        skip: z.number().int().optional().default(0),
       })
     )
     .query(async ({ ctx, input }) => {
-      return ctx.db.menu.findMany({
+      const menus = await ctx.db.menu.findMany({
         where: {
-          menuName: {
-            contains: input.filterByName,
-            mode: "insensitive",
-          },
+          menuName: { contains: input.filterByName, mode: "insensitive" },
         },
         include: {
           menuDishes: {
@@ -136,12 +134,18 @@ export const cafeteriaRouter = createTRPCRouter({
               },
             },
           },
-          sale: true,
+          sales: { orderBy: { saleDate: "desc" } },
         },
         take: input.take,
         skip: input.skip,
         orderBy: { menuName: "asc" },
       });
+      const totalCount = await ctx.db.menu.count({
+        where: {
+          menuName: { contains: input.filterByName, mode: "insensitive" },
+        },
+      });
+      return { menus, totalCount };
     }),
 
   getMenu: protectedProcedure
@@ -161,7 +165,7 @@ export const cafeteriaRouter = createTRPCRouter({
               },
             },
           },
-          sale: true,
+          sales: { orderBy: { saleDate: "desc" } },
         },
       });
     }),
@@ -177,91 +181,140 @@ export const cafeteriaRouter = createTRPCRouter({
     )
     .mutation(async ({ ctx, input }) => {
       const { menuId, dishIds, menuName, price } = input;
-      const dataToUpdate: Prisma.MenuUpdateInput = {};
-      if (menuName) dataToUpdate.menuName = menuName;
-      if (price) dataToUpdate.price = price;
+      return ctx.db.$transaction(async (prisma) => {
+        const dataToUpdate: Prisma.MenuUpdateInput = {};
+        if (menuName) dataToUpdate.menuName = menuName;
+        if (price) dataToUpdate.price = price;
 
-      if (dishIds) {
-        await ctx.db.menuDish.deleteMany({ where: { menuId } });
-        dataToUpdate.menuDishes = {
-          create: dishIds.map((dishId) => ({
-            dish: { connect: { dishId } },
-          })),
-        };
-      }
-
-      return ctx.db.menu.update({
-        where: { menuId },
-        data: dataToUpdate,
-        include: { menuDishes: { include: { dish: true } } },
+        if (dishIds) {
+          await prisma.menuDish.deleteMany({ where: { menuId } });
+          dataToUpdate.menuDishes = {
+            create: dishIds.map((dishId) => ({
+              dish: { connect: { dishId } },
+            })),
+          };
+        }
+        return prisma.menu.update({
+          where: { menuId },
+          data: dataToUpdate,
+          include: { menuDishes: { include: { dish: true } } },
+        });
       });
     }),
 
   deleteMenu: staffProcedure
     .input(z.object({ menuId: z.string().uuid() }))
     .mutation(async ({ ctx, input }) => {
-      // MenuDish entries should be deleted by cascade if schema is set up for it.
-      // Sales might also need consideration or be cascaded.
-      return ctx.db.menu.delete({
-        where: { menuId: input.menuId },
-      });
+      return ctx.db.menu.delete({ where: { menuId: input.menuId } });
     }),
 
   // --- DigitalCard Management ---
+  createDigitalCard: staffProcedure
+    .input(
+      z.object({
+        studentUserId: z.string().cuid(),
+        cardNo: z.string().min(1).max(40),
+        initialBalance: positiveNumberSchema.optional().default(0),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const staffUserId = ctx.session.user.id;
+      const studentUser = await ctx.db.user.findUnique({
+        where: { id: input.studentUserId },
+        include: { student: true },
+      });
+      if (!studentUser || !studentUser.student) {
+        throw new Error("Student not found or user is not a student.");
+      }
+      const existingCardNo = await ctx.db.digitalCard.findUnique({
+        where: { cardNo: input.cardNo },
+      });
+      if (existingCardNo) {
+        throw new Error(
+          `Digital card with number ${input.cardNo} already exists.`
+        );
+      }
+      const existingStudentCard = await ctx.db.digitalCard.findUnique({
+        where: { userId: input.studentUserId },
+      });
+      if (existingStudentCard) {
+        throw new Error(
+          `Student ${input.studentUserId} already has a digital card (Card No: ${existingStudentCard.cardNo}).`
+        );
+      }
+
+      return ctx.db.digitalCard.create({
+        data: {
+          userId: input.studentUserId,
+          cardNo: input.cardNo,
+          issuedByStaffId: staffUserId,
+          balance: input.initialBalance,
+          depositMoneyAmount: input.initialBalance,
+          cardCreationDate: new Date(),
+        },
+        include: {
+          student: { include: { user: true } },
+          issuedByStaff: { include: { user: true } },
+        },
+      });
+    }),
+
   getMyDigitalCard: protectedProcedure.query(async ({ ctx }) => {
     const studentId = ctx.session.user.id;
     const digitalCard = await ctx.db.digitalCard.findUnique({
       where: { userId: studentId },
       include: {
-        depositTransactions: { orderBy: { transactionDate: "desc" } },
         qrCodes: { orderBy: { createDate: "desc" }, take: 10 },
+        student: { include: { user: { select: { name: true, email: true } } } },
+        issuedByStaff: { include: { user: { select: { name: true } } } },
       },
     });
     if (!digitalCard) {
-      // For a hackathon, we might throw or return null.
-      // In a real app, this state (student exists but no card) should be handled gracefully.
-      throw new Error(
-        "Digital card not found for this user. Card must be created first."
-      );
+      throw new Error("Digital card not found. Please contact administration.");
     }
     return digitalCard;
   }),
+
+  getDigitalCardByStudentId: adminProcedure
+    .input(z.object({ studentId: z.string().cuid() }))
+    .query(async ({ ctx, input }) => {
+      const digitalCard = await ctx.db.digitalCard.findUnique({
+        where: { userId: input.studentId },
+        include: {
+          qrCodes: { orderBy: { createDate: "desc" }, take: 10 },
+          student: { include: { user: true } },
+          issuedByStaff: { include: { user: true } },
+        },
+      });
+      if (!digitalCard) {
+        throw new Error(
+          `Digital Card not found for student ID: ${input.studentId}`
+        );
+      }
+      return digitalCard;
+    }),
 
   recordDeposit: protectedProcedure
     .input(z.object({ amount: positiveNumberSchema }))
     .mutation(async ({ ctx, input }) => {
       const studentId = ctx.session.user.id;
-      const digitalCardExists = await ctx.db.digitalCard.findUnique({
+      const digitalCard = await ctx.db.digitalCard.findUnique({
         where: { userId: studentId },
       });
 
-      if (!digitalCardExists) {
-        throw new Error("Digital card not found.");
+      if (!digitalCard) {
+        throw new Error("Digital card not found to record deposit.");
       }
 
-      return ctx.db.$transaction(async (prisma) => {
-        const updatedCard = await prisma.digitalCard.update({
-          where: { userId: studentId },
-          data: { balance: { increment: input.amount } },
-        });
-        const transaction = await prisma.depositTransaction.create({
-          data: {
-            userId: studentId,
-            amount: input.amount,
-          },
-        });
-        return { updatedCard, transaction };
+      const updatedCard = await ctx.db.digitalCard.update({
+        where: { userId: studentId },
+        data: {
+          balance: { increment: input.amount },
+          depositMoneyAmount: { increment: input.amount },
+        },
       });
+      return { updatedCard, message: "Deposit recorded successfully." };
     }),
-
-  getMyTransactions: protectedProcedure.query(async ({ ctx }) => {
-    // This currently only fetches deposit transactions.
-    // Purchase transactions would likely be inferred from QR code usage / Sales.
-    return ctx.db.depositTransaction.findMany({
-      where: { userId: ctx.session.user.id }, // userId on DepositTransaction links to DigitalCard's userId
-      orderBy: { transactionDate: "desc" },
-    });
-  }),
 
   // --- QRCode Management ---
   generatePaymentQRCode: protectedProcedure
@@ -270,16 +323,15 @@ export const cafeteriaRouter = createTRPCRouter({
       const studentId = ctx.session.user.id;
       const digitalCard = await ctx.db.digitalCard.findUniqueOrThrow({
         where: { userId: studentId },
-        select: { cardNo: true }, // Assuming cardNo exists on DigitalCard model as per schema
+        select: { cardNo: true },
       });
 
       return ctx.db.qRCode.create({
         data: {
           userId: studentId,
           menuId: input.menuId,
-          cardNo: digitalCard.cardNo, // This should align with QRCode.cardNo String?
+          cardNo: digitalCard.cardNo,
           expiredDate: new Date(Date.now() + 5 * 60 * 1000),
-          // paysForDate: null, // Implicitly null on creation
         },
       });
     }),
@@ -293,24 +345,19 @@ export const cafeteriaRouter = createTRPCRouter({
           include: { digitalCard: true },
         });
 
-        if (qrCode.expiredDate < new Date()) {
+        if (qrCode.expiredDate < new Date())
           throw new Error("QR Code has expired.");
-        }
-        if (qrCode.paysForDate) {
-          // This field should exist on QRCode model
+        if (qrCode.paysForDate)
           throw new Error("QR Code has already been used.");
-        }
-        if (!qrCode.digitalCard) {
+        if (!qrCode.digitalCard)
           throw new Error("QR Code is not linked to a valid digital card.");
-        }
 
         const menu = await prisma.menu.findUniqueOrThrow({
           where: { menuId: input.menuId },
         });
 
-        if (qrCode.digitalCard.balance < menu.price) {
+        if (qrCode.digitalCard.balance < menu.price)
           throw new Error("Insufficient balance.");
-        }
 
         const updatedDigitalCard = await prisma.digitalCard.update({
           where: { userId: qrCode.userId },
@@ -319,21 +366,21 @@ export const cafeteriaRouter = createTRPCRouter({
 
         const updatedQRCode = await prisma.qRCode.update({
           where: { qrId: input.qrId },
-          data: {
-            menuId: input.menuId,
-            paysForDate: new Date(), // This field should exist on QRCode model
-          },
+          data: { menuId: input.menuId, paysForDate: new Date() },
         });
 
+        const todayForSale = getSaleDateKey(new Date());
+
         const sale = await prisma.sale.upsert({
-          where: { menuId: input.menuId },
+          where: {
+            menuId_saleDate: { menuId: input.menuId, saleDate: todayForSale },
+          },
           create: {
             menuId: input.menuId,
+            saleDate: todayForSale,
             numSold: 1,
           },
-          update: {
-            numSold: { increment: 1 },
-          },
+          update: { numSold: { increment: 1 } },
           include: { menu: true },
         });
 
@@ -351,25 +398,41 @@ export const cafeteriaRouter = createTRPCRouter({
     .input(
       z.object({
         menuId: z.string().uuid().optional(),
-        take: z.number().int().optional(),
-        skip: z.number().int().optional(),
+        dateFrom: z.string().datetime().optional(),
+        dateTo: z.string().datetime().optional(),
+        take: z.number().int().optional().default(10),
+        skip: z.number().int().optional().default(0),
       })
     )
     .query(async ({ ctx, input }) => {
       const whereClause: Prisma.SaleWhereInput = {
         menuId: input.menuId,
+        AND: [],
       };
+      if (input.dateFrom) {
+        (whereClause.AND as Prisma.SaleWhereInput[]).push({
+          saleDate: { gte: new Date(input.dateFrom) },
+        });
+      }
+      if (input.dateTo) {
+        (whereClause.AND as Prisma.SaleWhereInput[]).push({
+          saleDate: { lte: new Date(input.dateTo) },
+        });
+      }
+      if (!(whereClause.AND as Prisma.SaleWhereInput[]).length) {
+        delete whereClause.AND;
+      }
 
-      return ctx.db.sale.findMany({
+      const sales = await ctx.db.sale.findMany({
         where: whereClause,
         include: {
-          menu: {
-            select: { menuId: true, menuName: true, price: true },
-          },
+          menu: { select: { menuId: true, menuName: true, price: true } },
         },
         take: input.take,
         skip: input.skip,
-        orderBy: { menu: { menuName: "asc" } }, // Example: order by menu name via relation
+        orderBy: [{ menu: { menuName: "asc" } }, { saleDate: "desc" }],
       });
+      const totalCount = await ctx.db.sale.count({ where: whereClause });
+      return { sales, totalCount };
     }),
 });
