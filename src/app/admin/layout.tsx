@@ -10,6 +10,13 @@ import { usePathname } from "next/navigation";
 import React from "react";
 import AdminPageHeader from "@/app/_components/common/admin-page-header";
 import { Button } from "@/components/ui/button";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+	title: "AllInBee - Admin Portal",
+	description: "AllInBee - Admin Portal",
+	icons: [{ rel: "icon", url: "/favicon.ico" }],
+};
 
 // Define AdminNavItem type explicitly
 interface AdminNavItem {

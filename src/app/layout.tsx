@@ -10,7 +10,7 @@ import { TRPCReactProvider } from "@/trpc/react";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-	title: "AllInBee",
+	title: "AllInBee - Çankaya University",
 	description: "Çankaya University AllInBee Services",
 	icons: [{ rel: "icon", url: "/favicon.ico" }],
 };
