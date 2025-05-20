@@ -12,6 +12,7 @@ import {
   type Staff,
   // type AppointmentStatus is not directly used as a type here, enum is defined below
 } from "@prisma/client";
+import { TRPCError } from "@trpc/server";
 
 // Enum for AppointmentStatus based on Prisma schema
 const appointmentStatusSchema = z.enum([
@@ -187,13 +188,7 @@ export const appointmentsRouter = createTRPCRouter({
         }
       }
 
-      // At this point, studentProfile should exist. If it's still null after attempted creation,
-      // the error above would have been thrown.
-      // We can safely assert studentProfile is not null here for type safety if needed,
-      // but the logic flow should ensure it.
-      // For robustness, one final check:
       if (!studentProfile) {
-        // This case should ideally not be reached if the try/catch above works.
         throw new Error(
           "Your user profile could not be configured as a student. Please contact support."
         );
@@ -201,42 +196,33 @@ export const appointmentsRouter = createTRPCRouter({
 
       const studentIdToAssign = studentProfile.userId;
 
+      // Validation based on appointment type
       if (
         input.appointmentType === "Book" &&
         (!input.bookDetails || input.bookDetails.length === 0)
       ) {
         throw new Error("Book details are required for book appointments.");
       }
-      if (
-        (input.appointmentType === "Sport" ||
-          input.appointmentType === "Health") &&
-        (!input.startTime || !input.endTime)
-      ) {
-        throw new Error(
-          "Start time and end time are required for sport/health appointments."
-        );
+      if (input.appointmentType === "Sport") {
+        if (!input.startTime || !input.endTime) {
+          throw new Error(
+            "Start and end times are required for sport appointments."
+          );
+        }
+        if (!input.sportType) {
+          throw new Error("Sport type is required for sport appointments.");
+        }
       }
-      if (input.appointmentType === "Sport" && !input.sportType) {
-        throw new Error("Sport type is required for sport appointments.");
+      if (input.appointmentType === "Health") {
+        if (!input.startTime || !input.endTime) {
+          throw new Error(
+            "Start and end times are required for health appointments."
+          );
+        }
+        if (!input.healthType) {
+          throw new Error("Health type is required for health appointments.");
+        }
       }
-      if (input.appointmentType === "Health" && !input.healthType) {
-        throw new Error("Health type is required for health appointments.");
-      }
-
-      // Convert HH:MM string to Date object for Sport/Health startTime/endTime
-      // These will be stored as Time type in DB, Prisma handles conversion.
-      // The date part of these Dates will be ignored by Prisma for DB Time type.
-      // let sportHealthStartTime: Date | undefined = undefined;
-      // let sportHealthEndTime: Date | undefined = undefined;
-
-      // if (input.startTime) {
-      //   const [hours, minutes] = input.startTime.split(":").map(Number);
-      //   sportHealthStartTime = new Date(1970, 0, 1, hours, minutes); // Date part is arbitrary
-      // }
-      // if (input.endTime) {
-      //   const [hours, minutes] = input.endTime.split(":").map(Number);
-      //   sportHealthEndTime = new Date(1970, 0, 1, hours, minutes); // Date part is arbitrary
-      // }
 
       let staffUserIdToAssign = input.managedByStaffId;
       if (!staffUserIdToAssign) {
@@ -277,12 +263,11 @@ export const appointmentsRouter = createTRPCRouter({
             appointmentId: appointment.appointmentId,
             isbn: detail.isbn,
             borrowQuantity: detail.borrowQuantity,
-            borrowDate: new Date(),
+            borrowDate: new Date(appointment.appointmentDate), // Set borrowDate to the appointmentDate
           }));
           await prisma.bookBorrowRecord.createMany({
             data: borrowRecordsData,
           });
-          // Adjust currentQuantity for each borrowed book
           for (const detail of input.bookDetails) {
             await prisma.book.update({
               where: { isbn: detail.isbn },
@@ -296,7 +281,7 @@ export const appointmentsRouter = createTRPCRouter({
         } else if (
           input.appointmentType === "Sport" &&
           input.sportType &&
-          input.startTime &&
+          input.startTime && // startTime and endTime are validated above for Sport type
           input.endTime
         ) {
           const [startHours, startMinutes] = input.startTime
@@ -317,7 +302,7 @@ export const appointmentsRouter = createTRPCRouter({
         } else if (
           input.appointmentType === "Health" &&
           input.healthType &&
-          input.startTime &&
+          input.startTime && // startTime and endTime are validated above for Health type
           input.endTime
         ) {
           const [startHours, startMinutes] = input.startTime
@@ -347,16 +332,42 @@ export const appointmentsRouter = createTRPCRouter({
     }),
 
   listMyAppointments: protectedProcedure.query(async ({ ctx }) => {
-    const studentProfile = await ctx.db.student.findUnique({
-      where: { userId: ctx.session.user.id },
+    const studentId = ctx.session.user.id;
+    let studentProfile = await ctx.db.student.findUnique({
+      where: { userId: studentId },
     });
+
     if (!studentProfile) {
-      // Or throw an error: throw new TRPCError({ code: 'NOT_FOUND', message: 'Student profile not found.' });
-      return [];
+      // Lazily create Student profile if it doesn't exist
+      try {
+        studentProfile = await ctx.db.student.create({
+          data: {
+            userId: studentId,
+            // managingAdminId can be left null or set to a default if applicable
+          },
+        });
+        console.log(
+          `[LazyCreate] Created Student record for User ID: ${studentId} in listMyAppointments`
+        );
+      } catch (error) {
+        console.error(
+          `[LazyCreate] Failed to create Student record for User ID: ${studentId} in listMyAppointments`,
+          error
+        );
+        // If student profile creation fails, it's a more significant issue.
+        // Depending on desired behavior, either return [] or throw an error.
+        // For now, let's throw an error to make the issue visible, similar to other lazy creations.
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message:
+            "Failed to initialize your student profile for appointments. Please try again or contact support.",
+        });
+      }
     }
+    // Now studentProfile is guaranteed to exist.
 
     return ctx.db.appointment.findMany({
-      where: { takenByStudentId: studentProfile.userId },
+      where: { takenByStudentId: studentProfile.userId }, // Use studentProfile.userId, which is now guaranteed
       orderBy: { appointmentDate: "desc" },
       include: {
         managedByStaff: { include: { user: true } },
@@ -595,5 +606,46 @@ export const appointmentsRouter = createTRPCRouter({
         // Re-throw other errors, including the custom error from the check above
         throw e;
       }
+    }),
+
+  // --- Book Listing for Reservation ---
+  listAvailableBooks: protectedProcedure
+    .input(
+      z.object({
+        searchTerm: z.string().optional(),
+        skip: z.number().int().min(0).default(0),
+        take: z.number().int().min(1).max(100).default(20), // Default to 20 books per page
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const where: Prisma.BookWhereInput = {
+        currentQuantity: { gt: 0 }, // Only show books with available quantity
+      };
+      if (input.searchTerm) {
+        where.OR = [
+          { title: { contains: input.searchTerm, mode: "insensitive" } },
+          { author: { contains: input.searchTerm, mode: "insensitive" } },
+          { isbn: { contains: input.searchTerm, mode: "insensitive" } },
+        ];
+      }
+
+      const [books, totalCount] = await ctx.db.$transaction([
+        ctx.db.book.findMany({
+          where,
+          skip: input.skip,
+          take: input.take,
+          orderBy: { title: "asc" },
+          select: {
+            // Select only necessary fields for listing
+            isbn: true,
+            title: true,
+            author: true,
+            currentQuantity: true,
+            quantityInStock: true, // Good to show total stock too
+          },
+        }),
+        ctx.db.book.count({ where }), // Count only available books
+      ]);
+      return { books, totalCount };
     }),
 });

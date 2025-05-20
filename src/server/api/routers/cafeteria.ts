@@ -437,8 +437,8 @@ export const cafeteriaRouter = createTRPCRouter({
     }
     // Now studentProfile is guaranteed to exist.
 
-    const digitalCard = await ctx.db.digitalCard.findUnique({
-      where: { userId: studentProfile.userId }, // Use studentProfile.userId
+    let digitalCard = await ctx.db.digitalCard.findUnique({
+      where: { userId: studentProfile.userId },
       include: {
         qrCodes: { orderBy: { createDate: "desc" }, take: 10 },
         student: { include: { user: { select: { name: true, email: true } } } },
@@ -447,12 +447,52 @@ export const cafeteriaRouter = createTRPCRouter({
     });
 
     if (!digitalCard) {
-      // If student profile exists but card doesn't, this error is now more accurate.
-      throw new TRPCError({
-        code: "NOT_FOUND", // Changed from generic Error to TRPCError
-        message: "Digital card not found. Please contact administration.",
-      });
+      // Lazily create DigitalCard if not found
+      const newCardNo = `CARD-${studentProfile.userId.substring(
+        0,
+        8
+      )}-${randomUUID().substring(0, 4).toUpperCase()}`;
+      try {
+        digitalCard = await ctx.db.digitalCard.create({
+          data: {
+            userId: studentProfile.userId,
+            cardNo: newCardNo,
+            // balance and depositMoneyAmount will default to 0 as per schema
+            // cardCreationDate will default to now() as per schema
+            // issuedByStaffId is optional and can be omitted here
+          },
+          include: {
+            qrCodes: { orderBy: { createDate: "desc" }, take: 10 },
+            student: {
+              include: { user: { select: { name: true, email: true } } },
+            },
+            issuedByStaff: { include: { user: { select: { name: true } } } },
+          },
+        });
+        console.log(
+          `[LazyCreate] Created DigitalCard (No: ${newCardNo}) for Student ID: ${studentProfile.userId} in getMyDigitalCard`
+        );
+      } catch (creationError) {
+        console.error(
+          `[LazyCreate] Failed to create DigitalCard for Student ID: ${studentProfile.userId} in getMyDigitalCard`,
+          creationError
+        );
+        // If card creation fails, it's a more significant issue.
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message:
+            "Failed to initialize your digital card. Please try again or contact support.",
+        });
+      }
     }
+    // At this point, digitalCard should exist (either found or created).
+    // The original error for digitalCard not found is now handled by the creation block.
+    // if (!digitalCard) {
+    //   throw new TRPCError({
+    //     code: "NOT_FOUND",
+    //     message: "Digital card not found. Please contact administration.",
+    //   });
+    // }
     return digitalCard;
   }),
 
@@ -509,17 +549,42 @@ export const cafeteriaRouter = createTRPCRouter({
       }
       // Now studentProfile is guaranteed to exist.
 
-      const digitalCard = await ctx.db.digitalCard.findUnique({
+      let digitalCard = await ctx.db.digitalCard.findUnique({
         where: { userId: studentProfile.userId }, // Use studentProfile.userId
       });
 
       if (!digitalCard) {
-        // If student profile exists but card doesn't, this error is now more accurate.
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "Digital card not found to record deposit.",
-        });
+        // Lazily create DigitalCard if not found
+        const newCardNo = `CARD-DEPOSIT-${studentProfile.userId.substring(
+          0,
+          4
+        )}-${randomUUID().substring(0, 4).toUpperCase()}`;
+        try {
+          digitalCard = await ctx.db.digitalCard.create({
+            data: {
+              userId: studentProfile.userId,
+              cardNo: newCardNo,
+            },
+          });
+          console.log(
+            `[LazyCreate] Created DigitalCard (No: ${newCardNo}) for Student ID: ${studentProfile.userId} in recordDeposit`
+          );
+        } catch (creationError) {
+          console.error(
+            `[LazyCreate] Failed to create DigitalCard for Student ID: ${studentProfile.userId} in recordDeposit`,
+            creationError
+          );
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message:
+              "Failed to initialize your digital card for deposit. Please try again or contact support.",
+          });
+        }
+        // If we just created the card, we need to fetch it again if we need included relations for the return type,
+        // but for this specific mutation, just updating balance on the (now existing) digitalCard object is sufficient.
+        // The original query for digitalCard was simple (no includes).
       }
+      // At this point, digitalCard is guaranteed to exist.
 
       const updatedCard = await ctx.db.digitalCard.update({
         where: { userId: studentProfile.userId }, // Use studentProfile.userId
@@ -749,7 +814,7 @@ export const cafeteriaRouter = createTRPCRouter({
       const dailyRevenueMap = new Map<string, number>();
 
       for (const sale of salesData) {
-        const dateStr = sale.saleDate.toISOString().split("T")[0]!; // YYYY-MM-DD
+        const dateStr = sale.saleDate.toISOString().split("T")[0] ?? ""; // YYYY-MM-DD
         const currentRevenue = dailyRevenueMap.get(dateStr) ?? 0;
         const saleRevenue = sale.numSold * Number(sale.menu.price);
         dailyRevenueMap.set(dateStr, currentRevenue + saleRevenue);
@@ -759,7 +824,7 @@ export const cafeteriaRouter = createTRPCRouter({
       for (let i = 0; i < input.days; i++) {
         const currentDate = new Date(startDate);
         currentDate.setDate(startDate.getDate() + i);
-        const dateStr = currentDate.toISOString().split("T")[0]!; // YYYY-MM-DD
+        const dateStr = currentDate.toISOString().split("T")[0] ?? ""; // YYYY-MM-DD
         results.push({
           date: dateStr,
           revenue: dailyRevenueMap.get(dateStr) ?? 0,
