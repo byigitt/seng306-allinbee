@@ -26,6 +26,10 @@ function LoginPageContent() {
 	const [error, setError] = useState<string | null>(null);
 	const [isLoading, setIsLoading] = useState(false);
 
+	const isCankayaDomain = (email: string): boolean => {
+		return email.endsWith("@cankaya.edu.tr") || email.endsWith("@student.cankaya.edu.tr");
+	};
+
 	const handleGoogleSignIn = () => {
 		setIsLoading(true);
 		signIn("google", { callbackUrl }).catch(() => setIsLoading(false));
@@ -117,9 +121,11 @@ function LoginPageContent() {
 							<span className="bg-background px-2 text-muted-foreground">Or continue with</span>
 						</div>
 					</div>
-					<Button variant="outline" className="w-full" onClick={handleGoogleSignIn} disabled={isLoading}>
-						{isLoading ? "Redirecting..." : "Sign in with Google"}
-					</Button>
+					{!isCankayaDomain(email) && (
+						<Button variant="outline" className="w-full" onClick={handleGoogleSignIn} disabled={isLoading}>
+							{isLoading ? "Redirecting..." : "Sign in with Google"}
+						</Button>
+					)}
 				</CardContent>
 				<CardFooter className="text-center text-sm">
 					<p className="text-muted-foreground">

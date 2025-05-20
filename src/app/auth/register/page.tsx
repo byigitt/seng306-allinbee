@@ -29,6 +29,10 @@ export default function RegisterPage() {
 
 	const registerMutation = api.user.register.useMutation();
 
+	const isCankayaDomain = (email: string): boolean => {
+		return email.endsWith("@cankaya.edu.tr") || email.endsWith("@student.cankaya.edu.tr");
+	};
+
 	const handleRegister = async (e: React.FormEvent<HTMLFormElement>) => {
 		e.preventDefault();
 		setIsLoading(true);
@@ -56,13 +60,19 @@ export default function RegisterPage() {
 			} else if (signInResult?.ok) {
 				router.push("/"); 
 			}
-		} catch (mutationError: any) {
+		} catch (mutationError: unknown) {
 			setIsLoading(false);
-      // Check for specific error message from backend for existing user
-      if (mutationError?.message?.toLowerCase().includes("user with this email already exists")) {
+			let message = "An error occurred during registration.";
+			if (mutationError instanceof Error) {
+				message = mutationError.message;
+			} else if (typeof mutationError === 'object' && mutationError !== null && 'message'in mutationError && typeof (mutationError as {message: unknown}).message === 'string') {
+        message = (mutationError as {message: string}).message;
+      }
+      
+      if (message.toLowerCase().includes("user with this email already exists")) {
         setError("An account with this email already exists. Please try logging in.");
       } else {
-        setError(mutationError.message || "An error occurred during registration.");
+        setError(message);
       }
 		}
 	};
@@ -163,9 +173,11 @@ export default function RegisterPage() {
               <span className="bg-background px-2 text-muted-foreground">Or continue with</span>
             </div>
           </div>
+          {!isCankayaDomain(email) && (
   				<Button type="button" variant="outline" className="w-full" onClick={handleGoogleSignUp} disabled={isLoading}>
   					{isLoading ? "Redirecting..." : "Sign up with Google"}
   				</Button>
+          )}
         </CardContent>
         <CardFooter className="text-center text-sm">
             <p className="text-muted-foreground">
