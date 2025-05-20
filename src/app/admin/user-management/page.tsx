@@ -91,10 +91,30 @@ const editUserFormSchema = z.object({
 	email: z.string().email("Invalid email address.").optional(),
 	phoneNumber: z.string().nullable().optional(),
 	isStudent: z.boolean().optional(),
-	studentManagingAdminId: z.string().cuid().nullable().optional(),
+	studentManagingAdminId: z.preprocess(
+		(val) => {
+			console.log("Preprocessing studentManagingAdminId:", val, "(type:", typeof val, ")");
+			if (typeof val === 'string') {
+				const trimmedVal = val.trim();
+				return trimmedVal === "" ? undefined : trimmedVal;
+			}
+			return val; // Pass through non-strings (like null or undefined already)
+		},
+		z.string().cuid().nullable().optional()
+	),
 	isAdmin: z.boolean().optional(),
 	isStaff: z.boolean().optional(),
-	staffManagingAdminId: z.string().cuid().nullable().optional(),
+	staffManagingAdminId: z.preprocess(
+		(val) => {
+			console.log("Preprocessing staffManagingAdminId:", val, "(type:", typeof val, ")");
+			if (typeof val === 'string') {
+				const trimmedVal = val.trim();
+				return trimmedVal === "" ? undefined : trimmedVal;
+			}
+			return val; // Pass through non-strings
+		},
+		z.string().cuid().nullable().optional()
+	),
 });
 type EditUserFormValues = z.infer<typeof editUserFormSchema>;
 
@@ -178,16 +198,30 @@ export default function AdminUserManagementPage() {
 
 	useEffect(() => {
 		if (selectedUserForEdit) {
+			// Helper to determine if a value is a placeholder or not a CUID look-alike
+			const getSafeManagingAdminId = (id: string | null | undefined): string | undefined => {
+				if (id === "USR_ADMIN" || id === "STUDENT_ADMIN_PLACEHOLDER_IF_ANY") { // Add any other known placeholders
+					return undefined; // Treat placeholders as 'not set'
+				}
+				// Basic check if it remotely looks like a CUID (starts with 'c', length typical of CUID)
+				// This is not a foolproof CUID validation, but helps filter obvious non-CUIDs.
+				// Zod will do the final CUID validation.
+				if (id && typeof id === 'string' && id.startsWith('c') && id.length > 20) {
+					return id;
+				}
+				return undefined; // If not a placeholder and not CUID-like, treat as 'not set'
+			};
+
 			editUserForm.reset({
 				fName: selectedUserForEdit.fName,
 				lName: selectedUserForEdit.lName,
 				email: selectedUserForEdit.email,
 				phoneNumber: selectedUserForEdit.phoneNumber,
 				isStudent: !!selectedUserForEdit.student,
-				studentManagingAdminId: selectedUserForEdit.student?.managingAdminId,
+				studentManagingAdminId: getSafeManagingAdminId(selectedUserForEdit.student?.managingAdminId),
 				isAdmin: !!selectedUserForEdit.admin,
 				isStaff: !!selectedUserForEdit.staff,
-				staffManagingAdminId: selectedUserForEdit.staff?.managingAdminId,
+				staffManagingAdminId: getSafeManagingAdminId(selectedUserForEdit.staff?.managingAdminId),
 			});
 		} else {
 			editUserForm.reset({});
@@ -209,12 +243,14 @@ export default function AdminUserManagementPage() {
 
 	const adminUpdateUserMutation = api.user.adminUpdateUser.useMutation({
 		onSuccess: (data) => {
+			console.log("Mutation onSuccess:", data);
 			toast.success(`User "${data.fName} ${data.lName}" updated successfully!`);
 			utils.user.adminListUsers.invalidate();
 			setIsEditUserDialogOpen(false);
 			setSelectedUserForEdit(null);
 		},
 		onError: (error) => {
+			console.error("Mutation onError:", error);
 			toast.error(`Failed to update user: ${error.message}`);
 		},
 	});
@@ -239,7 +275,11 @@ export default function AdminUserManagementPage() {
 	};
 
 	const handleEditUserSubmit = (values: EditUserFormValues) => {
-		if (!selectedUserForEdit) return;
+		console.log("handleEditUserSubmit called with values:", values);
+		if (!selectedUserForEdit) {
+			console.error("handleEditUserSubmit: selectedUserForEdit is null");
+			return;
+		}
 		adminUpdateUserMutation.mutate({ userId: selectedUserForEdit.id, ...values });
 	};
 
@@ -525,7 +565,19 @@ export default function AdminUserManagementPage() {
 							<DialogTitle>Edit User: {selectedUserForEdit.fName} {selectedUserForEdit.lName}</DialogTitle>
 							<DialogDescription>Update user details and roles.</DialogDescription>
 						</DialogHeader>
-						<form onSubmit={editUserForm.handleSubmit(handleEditUserSubmit)} className="space-y-4 py-2 max-h-[70vh] overflow-y-auto pr-2">
+						{console.log("Edit Dialog - adminUpdateUserMutation state:", { 
+							isIdle: adminUpdateUserMutation.isIdle,
+							isLoading: adminUpdateUserMutation.isLoading,
+							isPending: adminUpdateUserMutation.isPending,
+							isSuccess: adminUpdateUserMutation.isSuccess,
+							isError: adminUpdateUserMutation.isError,
+							status: adminUpdateUserMutation.status,
+							error: adminUpdateUserMutation.error,
+							data: adminUpdateUserMutation.data
+						})}
+						<form onSubmit={editUserForm.handleSubmit(handleEditUserSubmit, (errors) => {
+							console.error("Form validation errors:", errors);
+						})} className="space-y-4 py-2 max-h-[70vh] overflow-y-auto pr-2">
 							<div className="grid grid-cols-2 gap-4">
 								<div>
 									<Label htmlFor="edit-fName">First Name</Label>
