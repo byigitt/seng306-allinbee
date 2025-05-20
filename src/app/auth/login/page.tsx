@@ -113,7 +113,7 @@ function LoginPageContent() {
 							{isLoading ? "Signing in..." : "Sign in"}
 						</Button>
 					</form>
-					<div className="relative my-4">
+					{/* <div className="relative my-4">
 						<div className="absolute inset-0 flex items-center">
 							<span className="w-full border-t" />
 						</div>
@@ -125,7 +125,7 @@ function LoginPageContent() {
 					<Button variant="outline" className="w-full" onClick={handleGoogleSignIn} disabled={isLoading}>
 						{isLoading ? "Redirecting..." : "Sign in with Google"}
 					</Button>
-					)}
+					)} */}
 				</CardContent>
 				<CardFooter className="text-center text-sm">
 					<p className="text-muted-foreground">

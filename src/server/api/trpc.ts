@@ -27,7 +27,14 @@ import { db } from "@/server/db";
  * @see https://trpc.io/docs/server/context
  */
 export const createTRPCContext = async (opts: { headers: Headers }) => {
+  console.log(
+    `[tRPC Context] process.env.AUTH_SECRET for auth(): "${process.env.AUTH_SECRET}" (length: ${process.env.AUTH_SECRET?.length})`
+  ); // Debug log
   const session = await auth();
+  console.log(
+    "Session from auth() in tRPC context:",
+    JSON.stringify(session, null, 2)
+  );
 
   return {
     db,
@@ -121,6 +128,10 @@ export const publicProcedure = t.procedure.use(timingMiddleware);
 export const protectedProcedure = t.procedure
   .use(timingMiddleware)
   .use(({ ctx, next }) => {
+    console.log(
+      "[protectedProcedure] ctx.session:",
+      JSON.stringify(ctx.session, null, 2)
+    ); // Debug log
     if (!ctx.session?.user) {
       throw new TRPCError({ code: "UNAUTHORIZED" });
     }

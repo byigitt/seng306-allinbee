@@ -196,7 +196,7 @@ export default function RegisterPage() {
                 {isLoading || registerMutation.isPending ? "Creating account..." : "Create account"}
               </Button>
     			</form>
-          <div className="relative my-4">
+          {/* <div className="relative my-4">
             <div className="absolute inset-0 flex items-center">
               <span className="w-full border-t" />
             </div>
@@ -208,7 +208,7 @@ export default function RegisterPage() {
   				<Button type="button" variant="outline" className="w-full" onClick={handleGoogleSignUp} disabled={isLoading}>
   					{isLoading ? "Redirecting..." : "Sign up with Google"}
   				</Button>
-          )}
+          )} */}
         </CardContent>
         <CardFooter className="text-center text-sm">
             <p className="text-muted-foreground">
