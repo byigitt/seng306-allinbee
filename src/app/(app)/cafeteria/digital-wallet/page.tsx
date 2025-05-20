@@ -72,8 +72,8 @@ export default function DigitalWalletPage() {
 							<p>Error: {error.message}</p>
 						</div>
 					)}
-					<div className="flex gap-4">
-						<Button asChild className="flex-1" disabled={isLoading || !!error}>
+					<div className="flex flex-wrap gap-4">
+						<Button asChild className="flex-1 min-w-[150px]" disabled={isLoading || !!error}>
 							<Link href="/cafeteria/add-funds">
 								<PlusCircle className="mr-2 h-4 w-4" /> Add Funds
 							</Link>
@@ -81,7 +81,7 @@ export default function DigitalWalletPage() {
 						<Button
 							variant="outline"
 							asChild
-							className="flex-1"
+							className="flex-1 min-w-[150px]"
 							disabled={isLoading || !!error}
 						>
 							<Link href="/cafeteria/transactions">
