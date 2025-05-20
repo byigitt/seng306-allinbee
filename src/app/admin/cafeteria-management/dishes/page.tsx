@@ -419,7 +419,7 @@ export default function ManageDishesPage() {
 						)}
 						{dishesQuery.data?.dishes.map((dish) => (
 							<TableRow key={dish.dishId} className={`${dishesQuery.isPlaceholderData ? "opacity-50" : ""} hover:bg-muted/50`}>
-								<TableCell className="font-medium py-2 px-2 md:px-3 whitespace-nowrap">{dish.dishName}</TableCell>
+								<TableCell className="font-medium py-2 px-2 md:px-3">{dish.dishName}</TableCell>
 								<TableCell className="py-2 px-2 md:px-3 hidden md:table-cell">{dish.category}</TableCell>
 								<TableCell className="py-2 px-2 md:px-3 text-right hidden sm:table-cell">₺{Number(dish.price).toFixed(2)}</TableCell>
 								<TableCell className="py-2 px-2 md:px-3 text-center hidden lg:table-cell">{dish.calories ?? "N/A"}</TableCell>

@@ -175,7 +175,7 @@ export default function AdminAnalyticsPage() {
 	const today = useMemo(() => new Date(), []);
 
 	// 1. Total Users
-	const { data: usersData, isLoading: isLoadingUsers } =
+	const { data: usersData, isLoading: isLoadingUsers, error: errorUsers } =
 		api.user.adminListUsers.useQuery(
 			{ take: 1 }, // We only need the count
 			{ refetchOnWindowFocus: false }
@@ -326,8 +326,17 @@ export default function AdminAnalyticsPage() {
 					</CardHeader>
 					<CardContent>
 						<div className="font-bold text-2xl">
-							{isLoadingUsers ? "Loading..." : usersData?.totalCount ?? "N/A"}
+							{isLoadingUsers
+								? "Loading..."
+								: errorUsers
+									? "Error"
+									: usersData?.totalCount ?? "N/A"}
 						</div>
+						{errorUsers && (
+							<p className="text-destructive text-xs">
+								{errorUsers.message || "Could not load user count."}
+							</p>
+						)}
 						{/* Percentage change for users is more complex and omitted for now */}
 						{/* <p className="text-muted-foreground text-xs">
 							+10.2% from last month

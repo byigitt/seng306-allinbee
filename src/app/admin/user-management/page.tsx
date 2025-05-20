@@ -146,6 +146,18 @@ export default function AdminUserManagementPage() {
         return Math.ceil(count / ITEMS_PER_PAGE);
     }, [usersQuery.data, roleFilter, filteredUsers.length]);
 
+    const paginatedUsers = useMemo(() => {
+        const usersSource = roleFilter === 'all' ? (usersQuery.data?.users ?? []) : filteredUsers;
+        // If roleFilter is 'all', pagination is handled by query 'skip' and 'take'.
+        // If roleFilter is active, we are client-side filtering the currently fetched page.
+        // This is a known limitation if the server doesn't filter by role for pagination.
+        // For simplicity, if role filter is active, we show the filtered results from the current API page.
+        // Proper pagination with role filter requires backend support.
+        return usersSource; // The `adminListUsers` query already handles pagination when roleFilter is 'all'.
+                          // When a role filter is applied client-side, it filters the *current page* of users.
+                          // This means pagination controls still operate on the basis of `usersQuery.data.totalCount` for 'all' roles.
+    }, [usersQuery.data?.users, roleFilter, filteredUsers]);
+
 	const addUserForm = useForm({
 		resolver: zodResolver(addUserFormSchema),
 		defaultValues: {
@@ -271,21 +283,6 @@ export default function AdminUserManagementPage() {
 		);
 	}
 
-	// const usersToDisplay = roleFilter === 'all' ? (usersQuery.data?.users ?? []) : filteredUsers;
-	// For pagination with client-side filtering, we need to slice the client-filtered array
-    const paginatedUsers = useMemo(() => {
-        const usersSource = roleFilter === 'all' ? (usersQuery.data?.users ?? []) : filteredUsers;
-        // If roleFilter is 'all', pagination is handled by query 'skip' and 'take'.
-        // If roleFilter is active, we are client-side filtering the currently fetched page.
-        // This is a known limitation if the server doesn't filter by role for pagination.
-        // For simplicity, if role filter is active, we show the filtered results from the current API page.
-        // Proper pagination with role filter requires backend support.
-        return usersSource; // The `adminListUsers` query already handles pagination when roleFilter is 'all'.
-                          // When a role filter is applied client-side, it filters the *current page* of users.
-                          // This means pagination controls still operate on the basis of `usersQuery.data.totalCount` for 'all' roles.
-    }, [usersQuery.data?.users, roleFilter, filteredUsers]);
-
-
 	return (
 		<div className="flex flex-col gap-4 p-1 md:p-0">
 			<div className="flex items-center justify-between">
@@ -347,82 +344,88 @@ export default function AdminUserManagementPage() {
 						</div>
 					</div>
 
-					<Table>
-						<TableHeader>
-							<TableRow>
-								<TableHead className="hidden w-[60px] sm:table-cell">
-									<span className="sr-only">Avatar</span>
-								</TableHead>
-								<TableHead>Name</TableHead>
-								<TableHead>Email</TableHead>
-								<TableHead>Role</TableHead>
-								<TableHead className="hidden md:table-cell">Joined / Verified</TableHead>
-								<TableHead>
-									<span className="sr-only">Actions</span>
-								</TableHead>
-							</TableRow>
-						</TableHeader>
-						<TableBody>
-							{usersQuery.isLoading && usersQuery.isPlaceholderData && (
-								<TableRow><TableCell colSpan={6} className="text-center py-8"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground mx-auto" /></TableCell></TableRow>
-							)}
-							{!usersQuery.isLoading && paginatedUsers.length === 0 && (
-								<TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-									{searchTerm || roleFilter !== 'all' ? 'No users match your current filters.' : 'No users found.'}
-								</TableCell></TableRow>
-							)}
-							{paginatedUsers.map((user) => (
-								<TableRow key={user.id}>
-									<TableCell className="hidden sm:table-cell">
-										{user.image ? (
-											<img
-												alt="User avatar"
-												className="aspect-square rounded-full object-cover"
-												height="40"
-												src={user.image}
-												width="40"
-											/>
-										) : (
-											<div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted font-medium text-muted-foreground text-sm">
-												{(user.fName?.charAt(0) ?? "").toUpperCase()}{(user.lName?.charAt(0) ?? "").toUpperCase()}
-											</div>
-										)}
-									</TableCell>
-									<TableCell className="font-medium">{user.fName} {user.lName}</TableCell>
-									<TableCell>{user.email}</TableCell>
-									<TableCell>
-										<Badge variant={user.role === "admin" ? "destructive" : "secondary"}>
-											{userRoleDisplay[user.role as UserRole] || "Unknown"}
-										</Badge>
-									</TableCell>
-									<TableCell className="hidden md:table-cell">
-										{user.emailVerified ? format(new Date(user.emailVerified), "PP") : "Not Verified"}
-									</TableCell>
-									<TableCell>
-										<DropdownMenu>
-											<DropdownMenuTrigger asChild>
-												<Button aria-haspopup="true" size="icon" variant="ghost">
-													<MoreHorizontal className="h-4 w-4" />
-													<span className="sr-only">Toggle menu</span>
-												</Button>
-											</DropdownMenuTrigger>
-											<DropdownMenuContent align="end">
-												<DropdownMenuLabel>Actions</DropdownMenuLabel>
-												{/* <DropdownMenuItem>View Details (NYI)</DropdownMenuItem> */}
-												<DropdownMenuItem onClick={() => openEditUserDialog(user)}>
-													<Edit className="mr-2 h-4 w-4" /> Edit User
-												</DropdownMenuItem>
-												<DropdownMenuSeparator />
-												<DropdownMenuItem className="text-red-600" onClick={() => openDeleteUserDialog(user)}>
-													<Trash2 className="mr-2 h-4 w-4" /> Delete User
-												</DropdownMenuItem>
-											</DropdownMenuContent>
-										</DropdownMenu>
-									</TableCell>
+					<div className="border rounded-lg overflow-x-auto">
+						<Table className="min-w-full">
+							<TableHeader>
+								<TableRow>
+									<TableHead className="hidden w-[60px] sm:table-cell px-2 py-2 text-xs">
+										<span className="sr-only">Avatar</span>
+									</TableHead>
+									<TableHead className="px-2 py-2 text-xs">Name</TableHead>
+									<TableHead className="px-2 py-2 text-xs">Email</TableHead>
+									<TableHead className="px-2 py-2 text-xs">Role</TableHead>
+									<TableHead className="hidden md:table-cell px-2 py-2 text-xs">Joined / Verified</TableHead>
+									<TableHead className="px-2 py-2 text-center text-xs">
+										<span className="sr-only">Actions</span>
+									</TableHead>
 								</TableRow>
-							))}
-						</TableBody>
-					</Table>
+							</TableHeader>
+							<TableBody>
+								{usersQuery.isLoading && usersQuery.isPlaceholderData && (
+									<TableRow><TableCell colSpan={6} className="text-center py-8"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground mx-auto" /></TableCell></TableRow>
+								)}
+								{!usersQuery.isLoading && paginatedUsers.length === 0 && (
+									<TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+										{searchTerm || roleFilter !== 'all' ? 'No users match your current filters.' : 'No users found.'}
+									</TableCell></TableRow>
+								)}
+								{paginatedUsers.map((user) => (
+									<TableRow key={user.id}>
+										<TableCell className="hidden sm:table-cell px-2 py-2">
+											{user.image ? (
+												<img
+													alt="User avatar"
+													className="aspect-square rounded-full object-cover"
+													height="40"
+													src={user.image}
+													width="40"
+												/>
+											) : (
+												<div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted font-medium text-muted-foreground text-sm">
+													{(user.fName?.charAt(0) ?? "").toUpperCase()}{(user.lName?.charAt(0) ?? "").toUpperCase()}
+												</div>
+											)}
+										</TableCell>
+										<TableCell className="font-medium px-2 py-2 text-xs truncate">
+											{`${user.fName} ${user.lName}`.length > 10 ? `${(`${user.fName} ${user.lName}`).substring(0, 10)}...` : `${user.fName} ${user.lName}`}
+										</TableCell>
+										<TableCell className="px-2 py-2 text-xs truncate">
+											{(user.email ?? '').length > 10 ? `${(user.email ?? '').substring(0, 10)}...` : user.email}
+										</TableCell>
+										<TableCell className="px-2 py-2 text-xs">
+											<Badge variant={user.role === "admin" ? "destructive" : "secondary"}>
+												{userRoleDisplay[user.role as UserRole] || "Unknown"}
+											</Badge>
+										</TableCell>
+										<TableCell className="hidden md:table-cell px-2 py-2 text-xs whitespace-nowrap">
+											{user.emailVerified ? format(new Date(user.emailVerified), "PP") : "Not Verified"}
+										</TableCell>
+										<TableCell className="px-2 py-2 text-center text-xs whitespace-nowrap">
+											<DropdownMenu>
+												<DropdownMenuTrigger asChild>
+													<Button aria-haspopup="true" size="icon" variant="ghost">
+														<MoreHorizontal className="h-4 w-4" />
+														<span className="sr-only">Toggle menu</span>
+													</Button>
+												</DropdownMenuTrigger>
+												<DropdownMenuContent align="end">
+													<DropdownMenuLabel>Actions</DropdownMenuLabel>
+													{/* <DropdownMenuItem>View Details (NYI)</DropdownMenuItem> */}
+													<DropdownMenuItem onClick={() => openEditUserDialog(user)}>
+														<Edit className="mr-2 h-4 w-4" /> Edit User
+													</DropdownMenuItem>
+													<DropdownMenuSeparator />
+													<DropdownMenuItem className="text-red-600" onClick={() => openDeleteUserDialog(user)}>
+														<Trash2 className="mr-2 h-4 w-4" /> Delete User
+													</DropdownMenuItem>
+												</DropdownMenuContent>
+											</DropdownMenu>
+										</TableCell>
+									</TableRow>
+								))}
+							</TableBody>
+						</Table>
+					</div>
 				</CardContent>
 			</Card>
 

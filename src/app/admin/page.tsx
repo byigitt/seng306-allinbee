@@ -107,7 +107,7 @@ export default function AdminDashboardPage() {
 				</div>
 			</div>
 
-			<div className="mb-[80px] grid gap-6 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+			<div className="mb-12 md:mb-16 lg:mb-20 grid gap-6 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
 				{cardsToShow.map((card) => (
 					<Link
 						href={card.href}
