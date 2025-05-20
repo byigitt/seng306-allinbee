@@ -81,11 +81,12 @@ export default function AddFundsPage() {
 		watch,
         formState: { errors, isSubmitting },
         reset,
+        setValue,
 	} = useForm({ // Infer TFieldValues from resolver: z.input<typeof addFundsSchema>
 		resolver: zodResolver(addFundsSchema),
 		defaultValues: {
-			selectedAmount: "20",
-			customAmount: undefined, // This should align with z.input's customAmount (string | undefined)
+			selectedAmount: undefined,
+			customAmount: undefined,
 		},
 	});
 
@@ -103,7 +104,8 @@ export default function AddFundsPage() {
 	const onSubmit = (data: AddFundsFormValues) => { // data is z.output<typeof addFundsSchema>
 		const amount = data.customAmount || parseFloat(data.selectedAmount || "0");
 		if (amount > 0) {
-			recordDepositMutation.mutate({ amount });
+			const finalAmount = data.customAmount ? data.customAmount : parseFloat(data.selectedAmount!);
+			recordDepositMutation.mutate({ amount: finalAmount });
 		} else {
             toast.error("Please enter or select a valid positive amount.");
         }
@@ -146,10 +148,15 @@ export default function AddFundsPage() {
 								name="selectedAmount"
 								control={control}
 								render={({ field }) => (
-									<Select 
-                                        onValueChange={field.onChange} 
-                                        defaultValue={field.value}
-                                        disabled={!!watchedCustomAmount || isSubmitting}
+									<Select
+                                        onValueChange={(value) => {
+                                            field.onChange(value);
+                                            if (value) {
+                                                setValue("customAmount", undefined, { shouldValidate: true });
+                                            }
+                                        }}
+                                        value={field.value ?? ""}
+                                        disabled={(watchedCustomAmount !== undefined && watchedCustomAmount.toString().trim() !== "") || isSubmitting}
                                     >
 							<SelectTrigger id="amount">
 								<SelectValue placeholder="Select amount" />
@@ -171,14 +178,20 @@ export default function AddFundsPage() {
 								name="customAmount"
 								control={control}
 								render={({ field }) => (
-									<Input 
-                                        {...field} 
-                                        id="custom-amount" 
-                                        type="number" 
-                                        placeholder="e.g., 75" 
-                                        disabled={!!watchedSelectedAmount && !field.value && !errors.customAmount || isSubmitting}
+									<Input
+                                        {...field}
+                                        id="custom-amount"
+                                        type="number"
+                                        placeholder="e.g., 75"
+                                        disabled={!!watchedSelectedAmount || isSubmitting}
                                         value={field.value ?? ""}
-                                        onChange={(e) => field.onChange(e.target.value === "" ? undefined : e.target.value)}
+                                        onChange={(e) => {
+                                            const val = e.target.value;
+                                            if (val && val.trim() !== "") {
+                                                setValue("selectedAmount", undefined, { shouldValidate: true });
+                                            }
+                                            field.onChange(val === "" ? undefined : val);
+                                        }}
                                     />
 								)}
 							/>
