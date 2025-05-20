@@ -122,9 +122,9 @@ function LoginPageContent() {
 						</div>
 					</div>
 					{!isCankayaDomain(email) && (
-						<Button variant="outline" className="w-full" onClick={handleGoogleSignIn} disabled={isLoading}>
-							{isLoading ? "Redirecting..." : "Sign in with Google"}
-						</Button>
+					<Button variant="outline" className="w-full" onClick={handleGoogleSignIn} disabled={isLoading}>
+						{isLoading ? "Redirecting..." : "Sign in with Google"}
+					</Button>
 					)}
 				</CardContent>
 				<CardFooter className="text-center text-sm">

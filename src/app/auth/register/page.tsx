@@ -26,6 +26,7 @@ export default function RegisterPage() {
 	const [password, setPassword] = useState("");
 	const [error, setError] = useState<string | null>(null);
 	const [isLoading, setIsLoading] = useState(false);
+	const [emailDomainError, setEmailDomainError] = useState<string | null>(null);
 
 	const registerMutation = api.user.register.useMutation();
 
@@ -37,6 +38,13 @@ export default function RegisterPage() {
 		e.preventDefault();
 		setIsLoading(true);
 		setError(null);
+		setEmailDomainError(null);
+
+		if (!isCankayaDomain(email)) {
+			setEmailDomainError("Registration is only allowed with @cankaya.edu.tr or @student.cankaya.edu.tr emails.");
+			setIsLoading(false);
+			return;
+		}
 
 		try {
 			await registerMutation.mutateAsync({
@@ -101,6 +109,11 @@ export default function RegisterPage() {
               <p>{error}</p>
             </div>
           )}
+          {emailDomainError && (
+            <div className="rounded-md bg-destructive/10 p-3 text-center text-sm text-destructive">
+              <p>{emailDomainError}</p>
+            </div>
+          )}
     			<form onSubmit={handleRegister} className="space-y-4">
     				<div className="grid grid-cols-2 gap-4">
     					<div className="space-y-2">
@@ -131,10 +144,24 @@ export default function RegisterPage() {
     					<Input 
     						id="email" 
     						type="email" 
-    						placeholder="m@example.com" 
+    						placeholder="cXXXXXXX@student.cankaya.edu.tr" 
     						required 
     						value={email}
-    							onChange={(e) => setEmail(e.target.value)}
+    							onChange={(e) => {
+                    setEmail(e.target.value);
+                    if (e.target.value && !isCankayaDomain(e.target.value)) {
+                      setEmailDomainError("Registration is only allowed with @cankaya.edu.tr or @student.cankaya.edu.tr emails.");
+                    } else {
+                      setEmailDomainError(null);
+                    }
+                  }}
+                  onBlur={(e) => {
+                    if (e.target.value && !isCankayaDomain(e.target.value)) {
+                      setEmailDomainError("Registration is only allowed with @cankaya.edu.tr or @student.cankaya.edu.tr emails.");
+                    } else {
+                      setEmailDomainError(null);
+                    }
+                  }}
     						disabled={isLoading}
     					/>
     				</div>
@@ -161,7 +188,11 @@ export default function RegisterPage() {
     							disabled={isLoading}
     					/>
     				</div>
-              <Button type="submit" className="w-full" disabled={isLoading || registerMutation.isPending}>
+              <Button 
+                type="submit" 
+                className="w-full" 
+                disabled={isLoading || registerMutation.isPending || (email !== "" && !isCankayaDomain(email)) || !!emailDomainError}
+              >
                 {isLoading || registerMutation.isPending ? "Creating account..." : "Create account"}
               </Button>
     			</form>
