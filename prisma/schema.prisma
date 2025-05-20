@@ -153,7 +153,7 @@ model Route {
 model RouteDepartureTime {
   routeId       String   @map("Route_ID") // DDL: "Route_ID" uuid REFERENCES "ROUTE"
     route         Route    @relation(fields: [routeId], references: [routeId], onDelete: Cascade, onUpdate: Cascade)
-  departureTime DateTime @map("DepartureTime") @db.Time // DDL: "DepartureTime" time NOT NULL
+  departureTime DateTime @map("DepartureTime") @db.Timestamp(6) // DDL: "DepartureTime" time NOT NULL
 
     @@id([routeId, departureTime])
     @@map("ROUTE_DEPARTURE_TIMES")

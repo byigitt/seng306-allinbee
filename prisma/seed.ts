@@ -653,11 +653,20 @@ async function main() {
     }
   }
   for (const rsData of routeStations) {
+    const routeId = rsData.route?.connect?.routeId;
+    const stationId = rsData.station?.connect?.stationId;
+    if (!routeId || !stationId) {
+      console.warn(
+        "Skipping RouteStation creation due to missing routeId or stationId in rsData",
+        rsData
+      );
+      continue;
+    }
     const existing = await prisma.routeStation.findUnique({
       where: {
         routeId_stationId: {
-          routeId: rsData.route!.connect!.routeId!,
-          stationId: rsData.station!.connect!.stationId!,
+          routeId: routeId,
+          stationId: stationId,
         },
       },
     });
@@ -666,8 +675,8 @@ async function main() {
         .create({ data: rsData })
         .catch((e) =>
           console.error(
-            `Error creating RouteStation ${rsData.route!.connect!.routeId}-${
-              rsData.station!.connect!.stationId
+            `Error creating RouteStation ${routeId ?? "UNKNOWN_ROUTE"}-${
+              stationId ?? "UNKNOWN_STATION"
             }: ${e.message}`
           )
         );
@@ -706,8 +715,8 @@ async function main() {
   const dishVeg = createdDishes.find((d) => d.dishId === "DISH_VEG");
 
   if (validStaffUserIds.length > 0) {
-    const staffForMenu001 = validStaffUserIds.includes(staffUserIds[0]!)
-      ? staffUserIds[0]!
+    const staffForMenu001 = validStaffUserIds.includes(staffUserIds[0] ?? "")
+      ? staffUserIds[0] ?? getRandomElement(validStaffUserIds)
       : getRandomElement(validStaffUserIds);
     if (staffForMenu001) {
       menus.push({
@@ -791,11 +800,20 @@ async function main() {
     }
   }
   for (const mdData of menuDishes) {
+    const menuId = mdData.menu?.connect?.menuId;
+    const dishId = mdData.dish?.connect?.dishId;
+    if (!menuId || !dishId) {
+      console.warn(
+        "Skipping MenuDish creation due to missing menuId or dishId in mdData",
+        mdData
+      );
+      continue;
+    }
     const existing = await prisma.menuDish.findUnique({
       where: {
         menuId_dishId: {
-          menuId: mdData.menu!.connect!.menuId!,
-          dishId: mdData.dish!.connect!.dishId!,
+          menuId: menuId,
+          dishId: dishId,
         },
       },
     });
@@ -804,8 +822,8 @@ async function main() {
         .create({ data: mdData })
         .catch((e) =>
           console.error(
-            `Error creating MenuDish ${mdData.menu!.connect!.menuId}-${
-              mdData.dish!.connect!.dishId
+            `Error creating MenuDish ${menuId ?? "UNKNOWN_MENU"}-${
+              dishId ?? "UNKNOWN_DISH"
             }: ${e.message}`
           )
         );
@@ -830,10 +848,18 @@ async function main() {
     }
   }
   for (const saleData of sales) {
+    const menuId = saleData.menu?.connect?.menuId;
+    if (!menuId) {
+      console.warn(
+        "Skipping sale update/creation due to missing menuId in saleData",
+        saleData
+      );
+      continue;
+    }
     const existing = await prisma.sale.findUnique({
       where: {
         menuId_saleDate: {
-          menuId: saleData.menu!.connect!.menuId!,
+          menuId: menuId,
           saleDate: saleData.saleDate,
         },
       },
@@ -843,21 +869,20 @@ async function main() {
         .create({ data: saleData })
         .catch((e) =>
           console.warn(
-            `Skipping duplicate sale for ${saleData.menu!.connect!
-              .menuId!} on ${(saleData.saleDate as Date).toISOString()}: ${
-              e.message
-            }`
+            `Skipping duplicate sale for ${menuId ?? "UNKNOWN_MENU"} on ${(
+              saleData.saleDate as Date
+            ).toISOString()}: ${e.message}`
           )
         );
     else if (
-      saleData.menu?.connect?.menuId === menu001?.menuId &&
+      menuId === menu001?.menuId &&
       (existing.saleDate as Date).getTime() ===
         (saleData.saleDate as Date).getTime()
     ) {
       await prisma.sale.update({
         where: {
           menuId_saleDate: {
-            menuId: saleData.menu!.connect!.menuId!,
+            menuId: menuId,
             saleDate: saleData.saleDate,
           },
         },
@@ -878,11 +903,7 @@ async function main() {
       (m) => m.menuName === "Lunch Combo"
     );
 
-    if (
-      specificStudentCardForQR &&
-      specificStudentCardForQR.cardNo &&
-      menuForSpecificQR
-    ) {
+    if (specificStudentCardForQR?.cardNo && menuForSpecificQR) {
       qrCodes.push({
         qrId: uuidv4(),
         digitalCard: { connect: { userId: specificStudentCardForQR.userId } },
@@ -899,7 +920,7 @@ async function main() {
     for (let i = 0; i < fetchedStudentDigitalCards.length * 2; i++) {
       const digitalCard = getRandomElement(fetchedStudentDigitalCards);
       const randomMenu = getRandomElement(createdMenus);
-      if (digitalCard && digitalCard.cardNo) {
+      if (digitalCard?.cardNo) {
         qrCodes.push({
           digitalCard: { connect: { userId: digitalCard.userId } },
           cardNo: digitalCard.cardNo,
@@ -992,11 +1013,20 @@ async function main() {
       }
     }
     for (const bdrData of busDrivesRoutes) {
+      const vehicleId = bdrData.bus?.connect?.vehicleId;
+      const routeId = bdrData.route?.connect?.routeId;
+      if (!vehicleId || !routeId) {
+        console.warn(
+          "Skipping BusDrivesRoute creation due to missing vehicleId or routeId in bdrData",
+          bdrData
+        );
+        continue;
+      }
       const existing = await prisma.busDrivesRoute.findUnique({
         where: {
           vehicleId_routeId: {
-            vehicleId: bdrData.bus!.connect!.vehicleId!,
-            routeId: bdrData.route!.connect!.routeId!,
+            vehicleId: vehicleId,
+            routeId: routeId,
           },
         },
       });
@@ -1005,9 +1035,9 @@ async function main() {
           .create({ data: bdrData })
           .catch((e) =>
             console.error(
-              `Error creating BusDrivesRoute ${
-                bdrData.bus!.connect!.vehicleId
-              }-${bdrData.route!.connect!.routeId}: ${e.message}`
+              `Error creating BusDrivesRoute ${vehicleId ?? "UNKNOWN_BUS"}-${
+                routeId ?? "UNKNOWN_ROUTE"
+              }: ${e.message}`
             )
           );
     }
@@ -1264,11 +1294,22 @@ async function main() {
         }
       }
       for (const bbrData of bookBorrowRecords) {
+        const isbn = bbrData.book?.connect?.isbn;
+        const appointmentId = bbrData.appointment?.connect?.appointmentId;
+
+        if (!isbn || !appointmentId) {
+          console.warn(
+            "Skipping BookBorrowRecord due to missing isbn or appointmentId",
+            bbrData
+          );
+          continue;
+        }
+
         const existing = await prisma.bookBorrowRecord.findUnique({
           where: {
             isbn_appointmentId: {
-              isbn: bbrData.book!.connect!.isbn!,
-              appointmentId: bbrData.appointment!.connect!.appointmentId!,
+              isbn: isbn,
+              appointmentId: appointmentId,
             },
           },
         });
@@ -1277,20 +1318,17 @@ async function main() {
             .create({ data: bbrData })
             .catch((e) =>
               console.error(
-                `Error creating BookBorrowRecord ${
-                  bbrData.book!.connect!.isbn
-                }-${bbrData.appointment!.connect!.appointmentId}: ${e.message}`
+                `Error creating BookBorrowRecord ${isbn ?? "UNKNOWN_ISBN"}-${
+                  appointmentId ?? "UNKNOWN_APPT"
+                }: ${e.message}`
               )
             );
-        else if (
-          bbrData.book!.connect!.isbn === "ISBN123" &&
-          bbrData.appointment!.connect!.appointmentId === specificApptId
-        ) {
+        else if (isbn === "ISBN123" && appointmentId === specificApptId) {
           await prisma.bookBorrowRecord.update({
             where: {
               isbn_appointmentId: {
-                isbn: bbrData.book!.connect!.isbn!,
-                appointmentId: bbrData.appointment!.connect!.appointmentId!,
+                isbn: isbn,
+                appointmentId: appointmentId,
               },
             },
             data: {
@@ -1475,6 +1513,62 @@ async function main() {
   } else {
     console.log("Skipping RouteDepartureTimes: No routes.");
   }
+
+  // TEST FOR DEPARTURE TIME ISSUE
+  if (createdRoutes.length > 0) {
+    const testRouteForTime = createdRoutes[0];
+    if (testRouteForTime) {
+      const specificTestDate = new Date("2025-12-25T10:30:00.000Z");
+      console.log(
+        `[TEST] Attempting to create RouteDepartureTime for route ${
+          testRouteForTime.routeId
+        } with date: ${specificTestDate.toISOString()}`
+      );
+      try {
+        const createdTestRDT = await prisma.routeDepartureTime.create({
+          data: {
+            route: { connect: { routeId: testRouteForTime.routeId } },
+            departureTime: specificTestDate,
+          },
+        });
+        console.log(
+          `[TEST] Created test RDT: ${JSON.stringify(createdTestRDT)}`
+        );
+        console.log(
+          `[TEST] Created test RDT departureTime directly: ${createdTestRDT.departureTime.toISOString()}`
+        );
+
+        const fetchedTestRDT = await prisma.routeDepartureTime.findUnique({
+          where: {
+            routeId_departureTime: {
+              routeId: testRouteForTime.routeId,
+              departureTime: specificTestDate,
+            },
+          },
+        });
+        if (fetchedTestRDT) {
+          console.log(
+            `[TEST] Fetched test RDT: ${JSON.stringify(fetchedTestRDT)}`
+          );
+          console.log(
+            `[TEST] Fetched test RDT departureTime directly: ${fetchedTestRDT.departureTime.toISOString()}`
+          );
+        } else {
+          console.log("[TEST] Failed to fetch the test RDT.");
+        }
+      } catch (testError) {
+        console.error(
+          "[TEST] Error during specific RouteDepartureTime test: ",
+          testError
+        );
+      }
+    } else {
+      console.log(
+        "[TEST] No routes available to perform specific RouteDepartureTime test."
+      );
+    }
+  }
+  // END TEST
 
   console.log("Seeding finished.");
 }
