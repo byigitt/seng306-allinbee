@@ -1,6 +1,6 @@
 # AllInBee - Campus Management System
 
-`seng306-allinbee` is a comprehensive campus management system designed to streamline various aspects of university life. It provides features for students, staff, and administrators, covering academic, financial, and transportation services.
+`AllInBee` is a comprehensive campus management system designed to streamline various aspects of university life. It provides features for students, staff, and administrators, covering academic, financial, and transportation services.
 
 ## Features
 
