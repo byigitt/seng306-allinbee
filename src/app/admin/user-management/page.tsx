@@ -91,34 +91,10 @@ const editUserFormSchema = z.object({
 	email: z.string().email("Invalid email address.").optional(),
 	phoneNumber: z.string().nullable().optional(),
 	isStudent: z.boolean().optional(),
-	studentManagingAdminId: z.preprocess(
-		(val) => {
-			console.log("Preprocessing studentManagingAdminId:", val, "(type:", typeof val, ")");
-			if (typeof val === 'string') {
-				const trimmedVal = val.trim();
-				if (trimmedVal === "") return undefined;
-				return trimmedVal;
-			}
-			if (val === null) return null;
-			return undefined; // Default for other types not explicitly handled
-		},
-		z.string().cuid().nullable().optional()
-	),
+	studentManagingAdminId: z.string().optional(),
 	isAdmin: z.boolean().optional(),
 	isStaff: z.boolean().optional(),
-	staffManagingAdminId: z.preprocess(
-		(val) => {
-			console.log("Preprocessing staffManagingAdminId:", val, "(type:", typeof val, ")");
-			if (typeof val === 'string') {
-				const trimmedVal = val.trim();
-				if (trimmedVal === "") return undefined;
-				return trimmedVal;
-			}
-			if (val === null) return null;
-			return undefined; // Default for other types not explicitly handled
-		},
-		z.string().cuid().nullable().optional()
-	),
+	staffManagingAdminId: z.string().optional(),
 });
 type EditUserFormValues = z.infer<typeof editUserFormSchema>;
 
