@@ -12,7 +12,7 @@ async function main() {
 
     // Section 1: User + Roles
     console.log("\\n--- Section 1: Inserting User + Roles ---");
-    sqlString = `INSERT INTO "USER"("UserID", "E-Mail", "FName","LName","Password") VALUES ('USR_ADMIN', 'admin@example.com', 'Super','Admin','phash'), ('USR_STAFF1', 'staff1@example.com', 'John','Staff','phash'), ('USR_STAFF2', 'staff2@example.com', 'Jane','Driver','phash'), ('USR_STD1', 'student1@example.com', 'Alice','Wonder','phash'), ('USR_STD2', 'student2@example.com', 'Bob','Builder','phash');`;
+    sqlString = `INSERT INTO "USER"("UserID", "E-Mail", "FName", "Minit", "LName","Password") VALUES ('USR_ADMIN', 'admin@example.com', 'Super', 'A', 'Admin','phash'), ('USR_STAFF1', 'staff1@example.com', 'John', 'D', 'Staff','phash'), ('USR_STAFF2', 'staff2@example.com', 'Jane', 'M', 'Driver','phash'), ('USR_STD1', 'student1@example.com', 'Alice', 'W', 'Wonder','phash'), ('USR_STD2', 'student2@example.com', 'Bob', 'B', 'Builder','phash');`;
     console.log("Executing SQL:", sqlString);
     insertResponse = await prisma.$executeRawUnsafe(sqlString);
     console.log("Response (rows affected):", insertResponse);

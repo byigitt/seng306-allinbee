@@ -529,10 +529,14 @@ async function main() {
   const routes: Prisma.RouteCreateInput[] = [];
   const routeIdMap = new Map<string, string>();
   const campusLoopRouteName = "Campus Loop";
+  const fixedRouteIdForQ3 = "ROUTE_AAAAAAAA-1111-1111-1111-111111111111";
+
+  // Ensure fixed route for Q3 is added
   routes.push({
-    routeId: uuidv4(),
+    routeId: fixedRouteIdForQ3,
     routeName: campusLoopRouteName,
   });
+
   for (let i = 0; i < 5; i++) {
     const name = getRandomElement(
       routeNames.filter(
@@ -540,7 +544,12 @@ async function main() {
           rn !== campusLoopRouteName && !routes.some((r) => r.routeName === rn)
       )
     );
-    if (name) routes.push({ routeId: uuidv4(), routeName: name });
+    // Ensure generated routeId doesn't clash with fixedRouteIdForQ3
+    let generatedRouteId = uuidv4();
+    while (generatedRouteId === fixedRouteIdForQ3) {
+      generatedRouteId = uuidv4();
+    }
+    if (name) routes.push({ routeId: generatedRouteId, routeName: name });
   }
   const createdRoutes: Prisma.RouteGetPayload<null>[] = [];
   for (const routeData of routes) {
@@ -562,25 +571,40 @@ async function main() {
   console.log(`Created ${createdRoutes.length} routes`);
 
   const stations: Prisma.StationCreateInput[] = [];
-  stations.push({
-    stationId: uuidv4(),
-    stationName: "Library",
-    stationLatitude: new Prisma.Decimal("34.052200"),
-    stationLongitude: new Prisma.Decimal("-118.243700"),
-  });
-  stations.push({
-    stationId: uuidv4(),
-    stationName: "Admin Bldg",
-    stationLatitude: new Prisma.Decimal("34.053000"),
-    stationLongitude: new Prisma.Decimal("-118.244500"),
-  });
+  const fixedStationA_Id = "STAT_A";
+  const fixedStationB_Id = "STAT_B";
+
+  // Ensure fixed stations for Q3 are added
+  stations.push(
+    {
+      stationId: fixedStationA_Id,
+      stationName: "Library",
+      stationLatitude: new Prisma.Decimal("34.0522"),
+      stationLongitude: new Prisma.Decimal("-118.2437"),
+    },
+    {
+      stationId: fixedStationB_Id,
+      stationName: "Admin Bldg",
+      stationLatitude: new Prisma.Decimal("34.0530"),
+      stationLongitude: new Prisma.Decimal("-118.2445"),
+    }
+  );
+
   for (let i = 0; i < 15; i++) {
     const name = getRandomElement(
       stationNames.filter((sn) => !stations.some((s) => s.stationName === sn))
     );
+    // Ensure generated stationId doesn't clash with fixed ones
+    let generatedStationId = uuidv4();
+    while (
+      generatedStationId === fixedStationA_Id ||
+      generatedStationId === fixedStationB_Id
+    ) {
+      generatedStationId = uuidv4();
+    }
     if (name)
       stations.push({
-        stationId: uuidv4(),
+        stationId: generatedStationId,
         stationName: name,
         stationLatitude: new Prisma.Decimal(
           getRandomNumber(34000000, 35000000) / 1000000
@@ -606,26 +630,69 @@ async function main() {
   console.log(`Created ${createdStations.length} stations`);
 
   const routeStations: Prisma.RouteStationCreateInput[] = [];
-  const campusLoopRouteId = routeIdMap.get(campusLoopRouteName);
-  if (campusLoopRouteId) {
-    if (createdStations.find((s) => s.stationId === "STAT_A"))
+  const campusLoopRouteIdFromMap = routeIdMap.get(campusLoopRouteName); // This should be fixedRouteIdForQ3
+
+  // Ensure RouteStation links for Q3 are correctly formed
+  if (campusLoopRouteIdFromMap === fixedRouteIdForQ3) {
+    const stationA_for_rs = createdStations.find(
+      (s) => s.stationId === fixedStationA_Id
+    );
+    const stationB_for_rs = createdStations.find(
+      (s) => s.stationId === fixedStationB_Id
+    );
+
+    if (stationA_for_rs) {
       routeStations.push({
-        route: { connect: { routeId: campusLoopRouteId } },
-        station: { connect: { stationId: "STAT_A" } },
+        route: { connect: { routeId: fixedRouteIdForQ3 } },
+        station: { connect: { stationId: stationA_for_rs.stationId } },
         stopOrder: 1,
       });
-    if (createdStations.find((s) => s.stationId === "STAT_B"))
+    } else {
+      console.warn(
+        `Station ${fixedStationA_Id} not found in createdStations. Link for Q3 might be missing.`
+      );
+    }
+    if (stationB_for_rs) {
       routeStations.push({
-        route: { connect: { routeId: campusLoopRouteId } },
-        station: { connect: { stationId: "STAT_B" } },
+        route: { connect: { routeId: fixedRouteIdForQ3 } },
+        station: { connect: { stationId: stationB_for_rs.stationId } },
         stopOrder: 2,
       });
+    } else {
+      console.warn(
+        `Station ${fixedStationB_Id} not found in createdStations. Link for Q3 might be missing.`
+      );
+    }
   } else {
     console.warn(
-      `Campus Loop route ID not found using name "${campusLoopRouteName}", skipping specific route-station links for it.`
+      `Campus Loop route ID from map ('${campusLoopRouteIdFromMap}') does not match fixed ID ('${fixedRouteIdForQ3}'). Skipping specific Q3 route-station links.`
     );
   }
+
   for (const route of createdRoutes) {
+    // Avoid re-processing the fixed Q3 route if its stations were specifically added
+    if (
+      route.routeId === fixedRouteIdForQ3 &&
+      routeStations.some(
+        (rs) => rs.route?.connect?.routeId === fixedRouteIdForQ3
+      )
+    ) {
+      // Check if specific stations STAT_A and STAT_B for this route are already in routeStations
+      const hasStatA = routeStations.some(
+        (rs) =>
+          rs.route?.connect?.routeId === fixedRouteIdForQ3 &&
+          rs.station?.connect?.stationId === fixedStationA_Id &&
+          rs.stopOrder === 1
+      );
+      const hasStatB = routeStations.some(
+        (rs) =>
+          rs.route?.connect?.routeId === fixedRouteIdForQ3 &&
+          rs.station?.connect?.stationId === fixedStationB_Id &&
+          rs.stopOrder === 2
+      );
+      if (hasStatA && hasStatB) continue;
+    }
+
     const numStops = getRandomNumber(2, 5);
     const availableStations = [...createdStations];
     for (let i = 0; i < numStops && availableStations.length > 0; i++) {
@@ -714,27 +781,43 @@ async function main() {
   const menus: Prisma.MenuCreateInput[] = [];
   const dishVeg = createdDishes.find((d) => d.dishId === "DISH_VEG");
 
-  if (validStaffUserIds.length > 0) {
-    const staffForMenu001 = validStaffUserIds.includes(staffUserIds[0] ?? "")
-      ? staffUserIds[0] ?? getRandomElement(validStaffUserIds)
-      : getRandomElement(validStaffUserIds);
-    if (staffForMenu001) {
+  // Ensure 'MENU_001' for Q2 compatibility
+  const fixedMenuIdForQ2 = "MENU_001";
+  const staffForMenu001 = validStaffUserIds.includes(staffUserIds[0] ?? "")
+    ? staffUserIds[0] ?? getRandomElement(validStaffUserIds)
+    : getRandomElement(validStaffUserIds);
+
+  if (staffForMenu001) {
+    const existingMenuIndex = menus.findIndex(
+      (m) => m.menuId === fixedMenuIdForQ2
+    );
+    if (existingMenuIndex === -1) {
       menus.push({
-        menuId: "MENU_001_UUID",
+        menuId: fixedMenuIdForQ2,
         menuName: "Lunch Combo",
         price: new Prisma.Decimal("12.99"),
         managedByStaff: { connect: { userId: staffForMenu001 } },
       });
     } else {
-      console.warn(
-        "Could not assign staff for MENU_001, skipping its creation."
-      );
+      console.log(`Menu ${fixedMenuIdForQ2} already defined in initial list.`);
     }
+  } else {
+    console.warn(
+      `Could not assign staff for ${fixedMenuIdForQ2}, Q2 data might be incomplete.`
+    );
+  }
+
+  if (validStaffUserIds.length > 0) {
     for (let i = 0; i < 10; i++) {
       const randomStaffForMenu = getRandomElement(validStaffUserIds);
       if (randomStaffForMenu) {
+        // Ensure generated menuId doesn't clash with fixedMenuIdForQ2
+        let generatedMenuId = uuidv4();
+        while (generatedMenuId === fixedMenuIdForQ2) {
+          generatedMenuId = uuidv4();
+        }
         menus.push({
-          menuId: uuidv4(),
+          menuId: generatedMenuId,
           menuName: `${
             getRandomElement([
               "Daily",
@@ -831,14 +914,36 @@ async function main() {
   console.log(`Created ${menuDishes.length} menu-dish links`);
 
   const sales: Prisma.SaleCreateInput[] = [];
-  if (menu001) {
+
+  // Ensure sale for 'MENU_001' for Q2
+  const menu001ForSales = createdMenus.find(
+    (m) => m.menuId === fixedMenuIdForQ2
+  );
+  if (menu001ForSales) {
     sales.push({
-      menu: { connect: { menuId: menu001.menuId } },
-      saleDate: new Date(),
-      numSold: 5,
+      menu: { connect: { menuId: menu001ForSales.menuId } },
+      saleDate: new Date(), // Prisma maps this to DATE type, matching CURRENT_DATE
+      numSold: 5, // As in load_and_query_data.ts
     });
+  } else {
+    console.warn(
+      `Menu ${fixedMenuIdForQ2} not found in createdMenus. Sale for Q2 will be missing from seed.`
+    );
   }
+
   for (const menu of createdMenus) {
+    // Avoid double-adding for the specific Q2 sale if it was already added above
+    if (menu.menuId === fixedMenuIdForQ2) {
+      const q2SaleAlreadyAdded = sales.some(
+        (s) =>
+          s.menu?.connect?.menuId === fixedMenuIdForQ2 &&
+          s.numSold === 5 &&
+          (s.saleDate instanceof Date
+            ? s.saleDate.toDateString()
+            : new Date(s.saleDate).toDateString()) === new Date().toDateString()
+      );
+      if (q2SaleAlreadyAdded) continue; // Skip general sale generation for this specific menu item if Q2 sale added
+    }
     for (let i = 0; i < getRandomNumber(5, 30); i++) {
       sales.push({
         menu: { connect: { menuId: menu.menuId } },
@@ -871,14 +976,20 @@ async function main() {
           console.warn(
             `Skipping duplicate sale for ${menuId ?? "UNKNOWN_MENU"} on ${(
               saleData.saleDate as Date
-            ).toISOString()}: ${e.message}`
+            ).toISOString()}. Error: ${e.message}`
           )
         );
     else if (
-      menuId === menu001?.menuId &&
-      (existing.saleDate as Date).getTime() ===
-        (saleData.saleDate as Date).getTime()
+      menuId === menu001ForSales?.menuId &&
+      (existing.saleDate instanceof Date
+        ? existing.saleDate.toDateString()
+        : new Date(existing.saleDate).toDateString()) ===
+        (saleData.saleDate instanceof Date
+          ? (saleData.saleDate as Date).toDateString()
+          : new Date(saleData.saleDate as string).toDateString())
     ) {
+      // This updates the specific sale for MENU_001 if it was already in the DB from a previous run
+      // and the current seed data for it is different (e.g. different numSold, though we fixed it to 5)
       await prisma.sale.update({
         where: {
           menuId_saleDate: {
@@ -980,10 +1091,10 @@ async function main() {
 
   const busDrivesRoutes: Prisma.BusDrivesRouteCreateInput[] = [];
   const bus01 = createdBuses.find((b) => b.vehicleId === "BUS_01");
-  if (bus01 && campusLoopRouteId) {
+  if (bus01 && campusLoopRouteIdFromMap) {
     busDrivesRoutes.push({
       bus: { connect: { vehicleId: bus01.vehicleId } },
-      route: { connect: { routeId: campusLoopRouteId } },
+      route: { connect: { routeId: campusLoopRouteIdFromMap } },
     });
   } else {
     console.warn(
