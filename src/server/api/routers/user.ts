@@ -3,6 +3,7 @@ import {
   protectedProcedure,
   publicProcedure,
   adminProcedure,
+  staffProcedure,
 } from "@/server/api/trpc";
 import { z } from "zod";
 import type { Prisma } from "@prisma/client";
@@ -111,7 +112,7 @@ export const userRouter = createTRPCRouter({
     }),
 
   // Admin: List all users
-  adminListUsers: adminProcedure
+  adminListUsers: staffProcedure
     .input(
       z.object({
         filterByEmail: z.string().email().optional(),
@@ -386,7 +387,7 @@ export const userRouter = createTRPCRouter({
     }),
 
   // Analytics: Get monthly user signups
-  getMonthlySignups: adminProcedure
+  getMonthlySignups: staffProcedure
     .input(
       z.object({
         months: z.number().int().positive().default(12),
@@ -435,7 +436,7 @@ export const userRouter = createTRPCRouter({
     }),
 
   // Analytics: Get basic feature usage stats
-  getFeatureUsageStats: adminProcedure.query(async ({ ctx }) => {
+  getFeatureUsageStats: staffProcedure.query(async ({ ctx }) => {
     const appointmentCount = await ctx.db.appointment.count();
     const cafeteriaSaleCount = await ctx.db.sale.count(); // Counts total sale entries (days with sales)
     // For a more granular count of individual sale *transactions*, if QRCodes are used for each, you might count those:

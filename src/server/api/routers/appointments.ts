@@ -432,7 +432,7 @@ export const appointmentsRouter = createTRPCRouter({
     }),
 
   // --- Admin Appointment Management ---
-  adminListAllAppointments: adminProcedure
+  adminListAllAppointments: staffProcedure
     .input(
       z.object({
         status: appointmentStatusSchema.optional(),

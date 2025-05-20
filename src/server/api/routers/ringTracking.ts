@@ -336,7 +336,7 @@ export const ringTrackingRouter = createTRPCRouter({
       });
     }),
 
-  listBuses: protectedProcedure
+  listBuses: staffProcedure
     .input(
       z.object({
         take: z.number().int().optional().default(10),
@@ -398,7 +398,7 @@ export const ringTrackingRouter = createTRPCRouter({
       });
     }),
 
-  getLiveBusLocations: protectedProcedure
+  getLiveBusLocations: staffProcedure
     .input(
       z.object({
         routeId: z.string().uuid().optional(),
@@ -553,7 +553,7 @@ export const ringTrackingRouter = createTRPCRouter({
     }),
 
   // Analytics: Get count of buses assigned per route
-  getBusesAssignedPerRoute: adminProcedure.query(async ({ ctx }) => {
+  getBusesAssignedPerRoute: staffProcedure.query(async ({ ctx }) => {
     const routesWithBusCounts = await ctx.db.route.findMany({
       include: {
         _count: {
@@ -572,7 +572,7 @@ export const ringTrackingRouter = createTRPCRouter({
   }),
 
   // Analytics: Get most favorited route
-  getMostFavoritedRoute: adminProcedure.query(async ({ ctx }) => {
+  getMostFavoritedRoute: staffProcedure.query(async ({ ctx }) => {
     const favoriteCounts = await ctx.db.userFavoriteRoute.groupBy({
       by: ["routeId"],
       where: { isFavorite: true }, // Only count routes currently marked as favorite

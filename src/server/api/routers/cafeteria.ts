@@ -773,7 +773,7 @@ export const cafeteriaRouter = createTRPCRouter({
     }),
 
   // Analytics: Get daily cafeteria revenue
-  getDailyRevenue: adminProcedure // Or staffProcedure if staff should see this
+  getDailyRevenue: staffProcedure
     .input(
       z.object({
         days: z.number().int().positive().default(30),
@@ -835,7 +835,7 @@ export const cafeteriaRouter = createTRPCRouter({
     }),
 
   // Analytics: Get most popular dish based on sales
-  getMostPopularDish: adminProcedure.query(async ({ ctx }) => {
+  getMostPopularDish: staffProcedure.query(async ({ ctx }) => {
     const salesWithDishes = await ctx.db.sale.findMany({
       include: {
         menu: {
