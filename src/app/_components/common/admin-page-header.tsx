@@ -25,11 +25,13 @@ interface AdminNavItem {
 interface AdminPageHeaderProps {
 	title: string;
 	navItems: AdminNavItem[];
+	portalHeaderTitle: string;
 }
 
 export default function AdminPageHeader({
 	title,
 	navItems,
+	portalHeaderTitle,
 }: AdminPageHeaderProps) {
 	const pathname = usePathname();
 
@@ -50,7 +52,7 @@ export default function AdminPageHeader({
 							className="flex items-center gap-2 rounded-full bg-primary px-3 py-2 font-bold text-lg text-primary-foreground shadow"
 						>
 							<Image src="/logo.png" alt="Logo" width={24} height={24} className="h-6 w-6 object-contain" />
-							<span className="text-sm">AllInBee Admin</span>
+							<span className="text-sm">{portalHeaderTitle}</span>
 						</Link>
 						<SheetClose asChild>
 							<Button size="icon" variant="ghost" className="rounded-full">
