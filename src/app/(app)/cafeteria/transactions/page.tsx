@@ -82,8 +82,8 @@ export default function TransactionHistoryPage() {
 				<CardContent>
 					{isLoading && (
                         <div className="space-y-2">
-                            {[...Array(3)].map((_, i) => (
-                                <Skeleton key={i} className="h-10 w-full" />
+                            {[1, 2, 3].map((itemKey) => (
+                                <Skeleton key={`skeleton-txn-item-${itemKey}`} className="h-10 w-full" />
                             ))}
                         </div>
                     )}
