@@ -529,7 +529,7 @@ async function main() {
   const routes: Prisma.RouteCreateInput[] = [];
   const routeIdMap = new Map<string, string>();
   const campusLoopRouteName = "Campus Loop";
-  const fixedRouteIdForQ3 = "ROUTE_AAAAAAAA-1111-1111-1111-111111111111";
+  const fixedRouteIdForQ3 = uuidv4();
 
   // Ensure fixed route for Q3 is added
   routes.push({

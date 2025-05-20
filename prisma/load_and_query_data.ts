@@ -7,134 +7,134 @@ async function main() {
   console.log("Starting data loading and querying script...");
 
   try {
-    let sqlString = ""; // Variable to hold SQL string for logging
-    let insertResponse: number; // Variable to hold insert response
+    // let sqlString = ""; // Variable to hold SQL string for logging
+    // let insertResponse: number; // Variable to hold insert response
 
-    // Section 1: User + Roles
-    console.log("\\n--- Section 1: Inserting User + Roles ---");
-    sqlString = `INSERT INTO "USER"("UserID", "E-Mail", "FName", "Minit", "LName","Password") VALUES ('USR_ADMIN', 'admin@example.com', 'Super', 'A', 'Admin','phash'), ('USR_STAFF1', 'staff1@example.com', 'John', 'D', 'Staff','phash'), ('USR_STAFF2', 'staff2@example.com', 'Jane', 'M', 'Driver','phash'), ('USR_STD1', 'student1@example.com', 'Alice', 'W', 'Wonder','phash'), ('USR_STD2', 'student2@example.com', 'Bob', 'B', 'Builder','phash');`;
-    console.log("Executing SQL:", sqlString);
-    insertResponse = await prisma.$executeRawUnsafe(sqlString);
-    console.log("Response (rows affected):", insertResponse);
+    // // Section 1: User + Roles
+    // console.log("\\n--- Section 1: Inserting User + Roles ---");
+    // sqlString = `INSERT INTO "USER"("UserID", "E-Mail", "FName", "Minit", "LName","Password") VALUES ('USR_ADMIN', 'admin@example.com', 'Super', 'A', 'Admin','phash'), ('USR_STAFF1', 'staff1@example.com', 'John', 'D', 'Staff','phash'), ('USR_STAFF2', 'staff2@example.com', 'Jane', 'M', 'Driver','phash'), ('USR_STD1', 'student1@example.com', 'Alice', 'W', 'Wonder','phash'), ('USR_STD2', 'student2@example.com', 'Bob', 'B', 'Builder','phash');`;
+    // console.log("Executing SQL:", sqlString);
+    // insertResponse = await prisma.$executeRawUnsafe(sqlString);
+    // console.log("Response (rows affected):", insertResponse);
 
-    sqlString = `INSERT INTO "ADMIN" VALUES ('USR_ADMIN');`;
-    console.log("Executing SQL:", sqlString);
-    insertResponse = await prisma.$executeRawUnsafe(sqlString);
-    console.log("Response (rows affected):", insertResponse);
+    // sqlString = `INSERT INTO "ADMIN" VALUES ('USR_ADMIN');`;
+    // console.log("Executing SQL:", sqlString);
+    // insertResponse = await prisma.$executeRawUnsafe(sqlString);
+    // console.log("Response (rows affected):", insertResponse);
 
-    sqlString = `INSERT INTO "STAFF" VALUES ('USR_STAFF1','USR_ADMIN'), ('USR_STAFF2','USR_ADMIN');`;
-    console.log("Executing SQL:", sqlString);
-    insertResponse = await prisma.$executeRawUnsafe(sqlString);
-    console.log("Response (rows affected):", insertResponse);
+    // sqlString = `INSERT INTO "STAFF" VALUES ('USR_STAFF1','USR_ADMIN'), ('USR_STAFF2','USR_ADMIN');`;
+    // console.log("Executing SQL:", sqlString);
+    // insertResponse = await prisma.$executeRawUnsafe(sqlString);
+    // console.log("Response (rows affected):", insertResponse);
 
-    sqlString = `INSERT INTO "STUDENT" VALUES ('USR_STD1','USR_ADMIN'), ('USR_STD2','USR_ADMIN');`;
-    console.log("Executing SQL:", sqlString);
-    insertResponse = await prisma.$executeRawUnsafe(sqlString);
-    console.log("Response (rows affected):", insertResponse);
-    console.log("User + Roles data inserted.");
+    // sqlString = `INSERT INTO "STUDENT" VALUES ('USR_STD1','USR_ADMIN'), ('USR_STD2','USR_ADMIN');`;
+    // console.log("Executing SQL:", sqlString);
+    // insertResponse = await prisma.$executeRawUnsafe(sqlString);
+    // console.log("Response (rows affected):", insertResponse);
+    // console.log("User + Roles data inserted.");
 
-    // Section 2: Digital Card
-    console.log("\\n--- Section 2: Inserting Digital Card Data ---");
-    sqlString = `INSERT INTO "DIGITALCARD" ("SUserID","Card_NO","Balance") VALUES ('USR_STD1','CARD-ALICE-001',50), ('USR_STD2','CARD-BOB-002',25);`;
-    console.log("Executing SQL:", sqlString);
-    insertResponse = await prisma.$executeRawUnsafe(sqlString);
-    console.log("Response (rows affected):", insertResponse);
-    console.log("Digital Card data inserted.");
+    // // Section 2: Digital Card
+    // console.log("\\n--- Section 2: Inserting Digital Card Data ---");
+    // sqlString = `INSERT INTO "DIGITALCARD" ("SUserID","Card_NO","Balance") VALUES ('USR_STD1','CARD-ALICE-001',50), ('USR_STD2','CARD-BOB-002',25);`;
+    // console.log("Executing SQL:", sqlString);
+    // insertResponse = await prisma.$executeRawUnsafe(sqlString);
+    // console.log("Response (rows affected):", insertResponse);
+    // console.log("Digital Card data inserted.");
 
-    // Section 3: Route
-    console.log("\\n--- Section 3: Inserting Route Data ---");
-    sqlString = `INSERT INTO "ROUTE"("Route_ID","RouteName") VALUES ('ROUTE_AAAAAAAA-1111-1111-1111-111111111111','Campus Loop');`;
-    console.log("Executing SQL:", sqlString);
-    insertResponse = await prisma.$executeRawUnsafe(sqlString);
-    console.log("Response (rows affected):", insertResponse);
+    // // Section 3: Route
+    // console.log("\\n--- Section 3: Inserting Route Data ---");
+    // sqlString = `INSERT INTO "ROUTE"("Route_ID","RouteName") VALUES ('ROUTE_AAAAAAAA-1111-1111-1111-111111111111','Campus Loop');`;
+    // console.log("Executing SQL:", sqlString);
+    // insertResponse = await prisma.$executeRawUnsafe(sqlString);
+    // console.log("Response (rows affected):", insertResponse);
 
-    sqlString = `INSERT INTO "STATION"("Station_ID","Station_Name","Station_Latitude","Station_Longitude") VALUES ('STAT_A','Library',34.0522,-118.2437), ('STAT_B','Admin Bldg',34.0530,-118.2445);`;
-    console.log("Executing SQL:", sqlString);
-    insertResponse = await prisma.$executeRawUnsafe(sqlString);
-    console.log("Response (rows affected):", insertResponse);
+    // sqlString = `INSERT INTO "STATION"("Station_ID","Station_Name","Station_Latitude","Station_Longitude") VALUES ('STAT_A','Library',34.0522,-118.2437), ('STAT_B','Admin Bldg',34.0530,-118.2445);`;
+    // console.log("Executing SQL:", sqlString);
+    // insertResponse = await prisma.$executeRawUnsafe(sqlString);
+    // console.log("Response (rows affected):", insertResponse);
 
-    sqlString = `INSERT INTO "HAS" VALUES ('ROUTE_AAAAAAAA-1111-1111-1111-111111111111','STAT_A',1), ('ROUTE_AAAAAAAA-1111-1111-1111-111111111111','STAT_B',2);`;
-    console.log("Executing SQL:", sqlString);
-    insertResponse = await prisma.$executeRawUnsafe(sqlString);
-    console.log("Response (rows affected):", insertResponse);
-    console.log("Route data inserted.");
+    // sqlString = `INSERT INTO "HAS" VALUES ('ROUTE_AAAAAAAA-1111-1111-1111-111111111111','STAT_A',1), ('ROUTE_AAAAAAAA-1111-1111-1111-111111111111','STAT_B',2);`;
+    // console.log("Executing SQL:", sqlString);
+    // insertResponse = await prisma.$executeRawUnsafe(sqlString);
+    // console.log("Response (rows affected):", insertResponse);
+    // console.log("Route data inserted.");
 
-    // Section 4: Food Data
-    console.log("\\n--- Section 4: Inserting Food Data ---");
-    sqlString = `INSERT INTO "DISH"("Dish_ID","Dish_Name","Calories") VALUES ('DISH_VEG','Vegan Burger',450);`;
-    console.log("Executing SQL:", sqlString);
-    insertResponse = await prisma.$executeRawUnsafe(sqlString);
-    console.log("Response (rows affected):", insertResponse);
+    // // Section 4: Food Data
+    // console.log("\\n--- Section 4: Inserting Food Data ---");
+    // sqlString = `INSERT INTO "DISH"("Dish_ID","Dish_Name","Calories") VALUES ('DISH_VEG','Vegan Burger',450);`;
+    // console.log("Executing SQL:", sqlString);
+    // insertResponse = await prisma.$executeRawUnsafe(sqlString);
+    // console.log("Response (rows affected):", insertResponse);
 
-    sqlString = `INSERT INTO "MENU"("Menu_ID","Menu_Name","Price","MngUserID") VALUES ('MENU_001','Lunch Combo',12.99,'USR_STAFF1');`;
-    console.log("Executing SQL:", sqlString);
-    insertResponse = await prisma.$executeRawUnsafe(sqlString);
-    console.log("Response (rows affected):", insertResponse);
+    // sqlString = `INSERT INTO "MENU"("Menu_ID","Menu_Name","Price","MngUserID") VALUES ('MENU_001','Lunch Combo',12.99,'USR_STAFF1');`;
+    // console.log("Executing SQL:", sqlString);
+    // insertResponse = await prisma.$executeRawUnsafe(sqlString);
+    // console.log("Response (rows affected):", insertResponse);
 
-    sqlString = `INSERT INTO "PART_OF" VALUES ('MENU_001','DISH_VEG');`;
-    console.log("Executing SQL:", sqlString);
-    insertResponse = await prisma.$executeRawUnsafe(sqlString);
-    console.log("Response (rows affected):", insertResponse);
-    console.log("Food data inserted.");
+    // sqlString = `INSERT INTO "PART_OF" VALUES ('MENU_001','DISH_VEG');`;
+    // console.log("Executing SQL:", sqlString);
+    // insertResponse = await prisma.$executeRawUnsafe(sqlString);
+    // console.log("Response (rows affected):", insertResponse);
+    // console.log("Food data inserted.");
 
-    // Section 5: Sales
-    console.log("\\n--- Section 5: Inserting Sales Data ---");
-    sqlString = `INSERT INTO "SALES" VALUES ('MENU_001',CURRENT_DATE,5);`;
-    console.log("Executing SQL:", sqlString);
-    insertResponse = await prisma.$executeRawUnsafe(sqlString);
-    console.log("Response (rows affected):", insertResponse);
-    console.log("Sales data inserted.");
+    // // Section 5: Sales
+    // console.log("\\n--- Section 5: Inserting Sales Data ---");
+    // sqlString = `INSERT INTO "SALES" VALUES ('MENU_001',CURRENT_DATE,5);`;
+    // console.log("Executing SQL:", sqlString);
+    // insertResponse = await prisma.$executeRawUnsafe(sqlString);
+    // console.log("Response (rows affected):", insertResponse);
+    // console.log("Sales data inserted.");
 
-    // Section 6: QR
-    console.log("\\n--- Section 6: Inserting QR Data ---");
-    const qrIdForInsert = randomUUID();
-    sqlString = `INSERT INTO "QR" ("SUserID","Card_NO","QR_ID","Expired_Date","MMenu_ID") VALUES ('USR_STD1','CARD-ALICE-001','${qrIdForInsert}',now()+interval '1 day','MENU_001');`;
-    console.log("Executing SQL:", sqlString);
-    insertResponse = await prisma.$executeRawUnsafe(sqlString);
-    console.log("Response (rows affected):", insertResponse);
-    console.log("QR data inserted.");
+    // // Section 6: QR
+    // console.log("\\n--- Section 6: Inserting QR Data ---");
+    // const qrIdForInsert = randomUUID();
+    // sqlString = `INSERT INTO "QR" ("SUserID","Card_NO","QR_ID","Expired_Date","MMenu_ID") VALUES ('USR_STD1','CARD-ALICE-001','${qrIdForInsert}',now()+interval '1 day','MENU_001');`;
+    // console.log("Executing SQL:", sqlString);
+    // insertResponse = await prisma.$executeRawUnsafe(sqlString);
+    // console.log("Response (rows affected):", insertResponse);
+    // console.log("QR data inserted.");
 
-    // Section 7: Bus & Drive_in
-    console.log("\\n--- Section 7: Inserting Bus & Drive_in Data ---");
-    sqlString = `INSERT INTO "BUS"("Vehicle_ID") VALUES ('BUS_01');`;
-    console.log("Executing SQL:", sqlString);
-    insertResponse = await prisma.$executeRawUnsafe(sqlString);
-    console.log("Response (rows affected):", insertResponse);
+    // // Section 7: Bus & Drive_in
+    // console.log("\\n--- Section 7: Inserting Bus & Drive_in Data ---");
+    // sqlString = `INSERT INTO "BUS"("Vehicle_ID") VALUES ('BUS_01');`;
+    // console.log("Executing SQL:", sqlString);
+    // insertResponse = await prisma.$executeRawUnsafe(sqlString);
+    // console.log("Response (rows affected):", insertResponse);
 
-    sqlString = `INSERT INTO "DRIVE_IN" VALUES ('BUS_01','ROUTE_AAAAAAAA-1111-1111-1111-111111111111');`;
-    console.log("Executing SQL:", sqlString);
-    insertResponse = await prisma.$executeRawUnsafe(sqlString);
-    console.log("Response (rows affected):", insertResponse);
-    console.log("Bus & Drive_in data inserted.");
+    // sqlString = `INSERT INTO "DRIVE_IN" VALUES ('BUS_01','ROUTE_AAAAAAAA-1111-1111-1111-111111111111');`;
+    // console.log("Executing SQL:", sqlString);
+    // insertResponse = await prisma.$executeRawUnsafe(sqlString);
+    // console.log("Response (rows affected):", insertResponse);
+    // console.log("Bus & Drive_in data inserted.");
 
-    // Section 8: Appointment
-    console.log("\\n--- Section 8: Inserting Appointment Data ---");
-    sqlString = `INSERT INTO "APPOINTMENT" ("Appointment_ID","SUserID","MNGStaffID","AppointmentDate") VALUES ('APPT_01','USR_STD2','USR_STAFF1',current_date+2);`;
-    console.log("Executing SQL:", sqlString);
-    insertResponse = await prisma.$executeRawUnsafe(sqlString);
-    console.log("Response (rows affected):", insertResponse);
+    // // Section 8: Appointment
+    // console.log("\\n--- Section 8: Inserting Appointment Data ---");
+    // sqlString = `INSERT INTO "APPOINTMENT" ("Appointment_ID","SUserID","MNGStaffID","AppointmentDate") VALUES ('APPT_01','USR_STD2','USR_STAFF1',current_date+2);`;
+    // console.log("Executing SQL:", sqlString);
+    // insertResponse = await prisma.$executeRawUnsafe(sqlString);
+    // console.log("Response (rows affected):", insertResponse);
 
-    sqlString = `INSERT INTO "SPORTAPPOINTMENT" VALUES ('APPT_01','Basketball','14:00','15:30');`;
-    console.log("Executing SQL:", sqlString);
-    insertResponse = await prisma.$executeRawUnsafe(sqlString);
-    console.log("Response (rows affected):", insertResponse);
-    console.log("Appointment data inserted.");
+    // sqlString = `INSERT INTO "SPORTAPPOINTMENT" VALUES ('APPT_01','Basketball','14:00','15:30');`;
+    // console.log("Executing SQL:", sqlString);
+    // insertResponse = await prisma.$executeRawUnsafe(sqlString);
+    // console.log("Response (rows affected):", insertResponse);
+    // console.log("Appointment data inserted.");
 
-    // Section 9: Book
-    console.log("\\n--- Section 9: Inserting Book Data ---");
-    sqlString = `INSERT INTO "BOOK" VALUES ('ISBN123','SQL Basics','J.Doe',10,8);`;
-    console.log("Executing SQL:", sqlString);
-    insertResponse = await prisma.$executeRawUnsafe(sqlString);
-    console.log("Response (rows affected):", insertResponse);
-    console.log("Book data inserted.");
+    // // Section 9: Book
+    // console.log("\\n--- Section 9: Inserting Book Data ---");
+    // sqlString = `INSERT INTO "BOOK" VALUES ('ISBN123','SQL Basics','J.Doe',10,8);`;
+    // console.log("Executing SQL:", sqlString);
+    // insertResponse = await prisma.$executeRawUnsafe(sqlString);
+    // console.log("Response (rows affected):", insertResponse);
+    // console.log("Book data inserted.");
 
-    // Section 10: BookAppointment
-    console.log("\\n--- Section 10: Inserting Book Borrow Record Data ---");
-    sqlString = `INSERT INTO "BOOKAPPOINTMENT" VALUES ('ISBN123','APPT_01',current_date+2,NULL,1);`;
-    console.log("Executing SQL:", sqlString);
-    insertResponse = await prisma.$executeRawUnsafe(sqlString);
-    console.log("Response (rows affected):", insertResponse);
-    console.log("BookAppointment/BorrowRecord data inserted.");
+    // // Section 10: BookAppointment
+    // console.log("\\n--- Section 10: Inserting Book Borrow Record Data ---");
+    // sqlString = `INSERT INTO "BOOKAPPOINTMENT" VALUES ('ISBN123','APPT_01',current_date+2,NULL,1);`;
+    // console.log("Executing SQL:", sqlString);
+    // insertResponse = await prisma.$executeRawUnsafe(sqlString);
+    // console.log("Response (rows affected):", insertResponse);
+    // console.log("BookAppointment/BorrowRecord data inserted.");
 
     console.log("\\n=======================================================");
     console.log("            Sample Queries Results                   ");

@@ -96,9 +96,11 @@ const editUserFormSchema = z.object({
 			console.log("Preprocessing studentManagingAdminId:", val, "(type:", typeof val, ")");
 			if (typeof val === 'string') {
 				const trimmedVal = val.trim();
-				return trimmedVal === "" ? undefined : trimmedVal;
+				if (trimmedVal === "") return undefined;
+				return trimmedVal;
 			}
-			return val; // Pass through non-strings (like null or undefined already)
+			if (val === null) return null;
+			return undefined; // Default for other types not explicitly handled
 		},
 		z.string().cuid().nullable().optional()
 	),
@@ -109,9 +111,11 @@ const editUserFormSchema = z.object({
 			console.log("Preprocessing staffManagingAdminId:", val, "(type:", typeof val, ")");
 			if (typeof val === 'string') {
 				const trimmedVal = val.trim();
-				return trimmedVal === "" ? undefined : trimmedVal;
+				if (trimmedVal === "") return undefined;
+				return trimmedVal;
 			}
-			return val; // Pass through non-strings
+			if (val === null) return null;
+			return undefined; // Default for other types not explicitly handled
 		},
 		z.string().cuid().nullable().optional()
 	),
@@ -565,16 +569,17 @@ export default function AdminUserManagementPage() {
 							<DialogTitle>Edit User: {selectedUserForEdit.fName} {selectedUserForEdit.lName}</DialogTitle>
 							<DialogDescription>Update user details and roles.</DialogDescription>
 						</DialogHeader>
-						{console.log("Edit Dialog - adminUpdateUserMutation state:", { 
+						{/* 
+                        console.log("Edit Dialog - adminUpdateUserMutation state:", { 
 							isIdle: adminUpdateUserMutation.isIdle,
-							isLoading: adminUpdateUserMutation.isLoading,
-							isPending: adminUpdateUserMutation.isPending,
+							isPending: adminUpdateUserMutation.isPending, // Corrected from isLoading
 							isSuccess: adminUpdateUserMutation.isSuccess,
 							isError: adminUpdateUserMutation.isError,
 							status: adminUpdateUserMutation.status,
 							error: adminUpdateUserMutation.error,
 							data: adminUpdateUserMutation.data
-						})}
+						})
+                        */}
 						<form onSubmit={editUserForm.handleSubmit(handleEditUserSubmit, (errors) => {
 							console.error("Form validation errors:", errors);
 						})} className="space-y-4 py-2 max-h-[70vh] overflow-y-auto pr-2">

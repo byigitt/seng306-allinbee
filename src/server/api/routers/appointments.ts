@@ -179,20 +179,15 @@ export const appointmentsRouter = createTRPCRouter({
           );
         } catch (error) {
           console.error(
-            `[appointmentsRouter] Failed to lazily create Student record for User ID: ${sessionUserId}`,
-            error
+            `[appointmentsRouter] Failed to lazily create Student record for User ID: ${sessionUserId}. Prisma Error:`,
+            error instanceof Error ? error.message : error,
+            error instanceof Error ? error.stack : undefined
           );
           // If creation fails here, it's a more persistent issue or a race condition not resolved.
           throw new Error(
             "Failed to set up your student profile. Please try again shortly or contact support if the issue persists."
           );
         }
-      }
-
-      if (!studentProfile) {
-        throw new Error(
-          "Your user profile could not be configured as a student. Please contact support."
-        );
       }
 
       const studentIdToAssign = studentProfile.userId;
@@ -352,8 +347,9 @@ export const appointmentsRouter = createTRPCRouter({
         );
       } catch (error) {
         console.error(
-          `[LazyCreate] Failed to create Student record for User ID: ${studentId} in listMyAppointments`,
-          error
+          `[LazyCreate] Failed to create Student record for User ID: ${studentId} in listMyAppointments. Prisma Error:`,
+          error instanceof Error ? error.message : error,
+          error instanceof Error ? error.stack : undefined
         );
         // If student profile creation fails, it's a more significant issue.
         // Depending on desired behavior, either return [] or throw an error.

@@ -398,7 +398,7 @@ export const ringTrackingRouter = createTRPCRouter({
       });
     }),
 
-  getLiveBusLocations: staffProcedure
+  getLiveBusLocations: protectedProcedure
     .input(
       z.object({
         routeId: z.string().uuid().optional(),

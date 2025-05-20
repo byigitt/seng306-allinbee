@@ -50,8 +50,8 @@ export default function EtasPage() {
 		error: errorRouteDetails,
 		isError: isErrorRouteDetails,
 	} = api.ringTracking.getRoute.useQuery(
-		{ routeId: selectedRouteId ?? "" }, 
-		{ enabled: !!selectedRouteId }
+		{ routeId: selectedRouteId! },
+		{ enabled: !!selectedRouteId && selectedRouteId !== "" }
 	);
 
 	const stationsForSelectedRoute = selectedRouteDetails?.routeStations.map(rs => rs.station) ?? [];
