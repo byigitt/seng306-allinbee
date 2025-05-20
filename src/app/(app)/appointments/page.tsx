@@ -69,8 +69,7 @@ export default function BrowseAppointmentsPage() {
 							</CardHeader>
 							<CardFooter>
 								<Button asChild className="w-full">
-									{/* The link will eventually be to /appointments/book/[service.id] */}
-									<Link href={`/appointments/book/${service.id}`}>
+									<Link href={`/appointments/${service.id}`}>
 										View Availability & Book
 									</Link>
 								</Button>
