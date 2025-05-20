@@ -7,6 +7,7 @@ import {
   adminProcedure,
 } from "@/server/api/trpc";
 import { Prisma } from "@prisma/client";
+import { TRPCError } from "@trpc/server";
 
 // Zod schema for positive numbers (can be used for Decimals if input is number-like)
 const positiveNumberSchema = z.preprocess(
@@ -406,16 +407,51 @@ export const cafeteriaRouter = createTRPCRouter({
 
   getMyDigitalCard: protectedProcedure.query(async ({ ctx }) => {
     const studentId = ctx.session.user.id;
-    const digitalCard = await ctx.db.digitalCard.findUnique({
+
+    // Lazy creation of Student profile if it doesn't exist
+    let studentProfile = await ctx.db.student.findUnique({
       where: { userId: studentId },
+    });
+
+    if (!studentProfile) {
+      try {
+        studentProfile = await ctx.db.student.create({
+          data: {
+            userId: studentId,
+          },
+        });
+        console.log(
+          `[LazyCreate] Created Student record for User ID: ${studentId} in getMyDigitalCard`
+        );
+      } catch (error) {
+        console.error(
+          `[LazyCreate] Failed to create Student record for User ID: ${studentId} in getMyDigitalCard`,
+          error
+        );
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message:
+            "Failed to initialize your student profile. Please try again or contact support.",
+        });
+      }
+    }
+    // Now studentProfile is guaranteed to exist.
+
+    const digitalCard = await ctx.db.digitalCard.findUnique({
+      where: { userId: studentProfile.userId }, // Use studentProfile.userId
       include: {
         qrCodes: { orderBy: { createDate: "desc" }, take: 10 },
         student: { include: { user: { select: { name: true, email: true } } } },
         issuedByStaff: { include: { user: { select: { name: true } } } },
       },
     });
+
     if (!digitalCard) {
-      throw new Error("Digital card not found. Please contact administration.");
+      // If student profile exists but card doesn't, this error is now more accurate.
+      throw new TRPCError({
+        code: "NOT_FOUND", // Changed from generic Error to TRPCError
+        message: "Digital card not found. Please contact administration.",
+      });
     }
     return digitalCard;
   }),
@@ -443,16 +479,50 @@ export const cafeteriaRouter = createTRPCRouter({
     .input(z.object({ amount: positiveNumberSchema }))
     .mutation(async ({ ctx, input }) => {
       const studentId = ctx.session.user.id;
-      const digitalCard = await ctx.db.digitalCard.findUnique({
+
+      // Lazy creation of Student profile if it doesn't exist
+      let studentProfile = await ctx.db.student.findUnique({
         where: { userId: studentId },
       });
 
+      if (!studentProfile) {
+        try {
+          studentProfile = await ctx.db.student.create({
+            data: {
+              userId: studentId,
+            },
+          });
+          console.log(
+            `[LazyCreate] Created Student record for User ID: ${studentId} in recordDeposit`
+          );
+        } catch (error) {
+          console.error(
+            `[LazyCreate] Failed to create Student record for User ID: ${studentId} in recordDeposit`,
+            error
+          );
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message:
+              "Failed to initialize your student profile. Please try again or contact support.",
+          });
+        }
+      }
+      // Now studentProfile is guaranteed to exist.
+
+      const digitalCard = await ctx.db.digitalCard.findUnique({
+        where: { userId: studentProfile.userId }, // Use studentProfile.userId
+      });
+
       if (!digitalCard) {
-        throw new Error("Digital card not found to record deposit.");
+        // If student profile exists but card doesn't, this error is now more accurate.
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Digital card not found to record deposit.",
+        });
       }
 
       const updatedCard = await ctx.db.digitalCard.update({
-        where: { userId: studentId },
+        where: { userId: studentProfile.userId }, // Use studentProfile.userId
         data: {
           balance: { increment: input.amount },
           depositMoneyAmount: { increment: input.amount },
@@ -466,28 +536,73 @@ export const cafeteriaRouter = createTRPCRouter({
     .input(z.object({ menuId: z.string().uuid().optional() }))
     .mutation(async ({ ctx, input }) => {
       const studentId = ctx.session.user.id;
-      let digitalCard = await ctx.db.digitalCard.findUnique({
+
+      // Lazy creation of Student profile if it doesn't exist
+      let studentProfile = await ctx.db.student.findUnique({
         where: { userId: studentId },
+      });
+
+      if (!studentProfile) {
+        try {
+          studentProfile = await ctx.db.student.create({
+            data: {
+              userId: studentId,
+              // managingAdminId can be left null or set to a default if applicable
+            },
+          });
+          console.log(
+            `[LazyCreate] Created Student record for User ID: ${studentId} in generatePaymentQRCode`
+          );
+        } catch (error) {
+          console.error(
+            `[LazyCreate] Failed to create Student record for User ID: ${studentId} in generatePaymentQRCode`,
+            error
+          );
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message:
+              "Failed to initialize your student profile. Please try again or contact support.",
+          });
+        }
+      }
+      // Now studentProfile is guaranteed to exist.
+
+      let digitalCard = await ctx.db.digitalCard.findUnique({
+        where: { userId: studentId }, // studentId here refers to User.id which is Student.userId
         select: { cardNo: true },
       });
 
       if (!digitalCard) {
         // If no digital card exists, create one for the student
         const newCardNo = randomUUID();
+        // Ensure studentProfile is not null, which it shouldn't be after the block above
+        if (!studentProfile) {
+          // This should ideally not be reached if the above logic is correct
+          console.error(
+            "[generatePaymentQRCode] Student profile was unexpectedly null before DigitalCard creation."
+          );
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: "Error accessing student profile.",
+          });
+        }
         digitalCard = await ctx.db.digitalCard.create({
           data: {
-            userId: studentId, // Prisma maps userId to SUserID based on the model relation
-            cardNo: newCardNo, // Explicitly provide cardNo
+            userId: studentProfile.userId, // Use the (potentially newly created) student's userId
+            cardNo: newCardNo,
             // balance will default to 0.0 as per Prisma schema
           },
           select: { cardNo: true },
         });
+        console.log(
+          `[LazyCreate] Created DigitalCard for Student ID: ${studentProfile.userId} in generatePaymentQRCode`
+        );
       }
 
       // At this point, digitalCard is guaranteed to exist and have cardNo
       return ctx.db.qRCode.create({
         data: {
-          userId: studentId,
+          userId: studentProfile.userId, // Use studentProfile.userId here as well for consistency
           menuId: input.menuId,
           cardNo: digitalCard.cardNo,
           expiredDate: new Date(Date.now() + 5 * 60 * 1000), // 5 minutes expiry
@@ -591,4 +706,107 @@ export const cafeteriaRouter = createTRPCRouter({
       const totalCount = await ctx.db.sale.count({ where: whereClause });
       return { sales, totalCount };
     }),
+
+  // Analytics: Get daily cafeteria revenue
+  getDailyRevenue: adminProcedure // Or staffProcedure if staff should see this
+    .input(
+      z.object({
+        days: z.number().int().positive().default(30),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const results: { date: string; revenue: number }[] = [];
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const startDate = new Date(today);
+      startDate.setDate(today.getDate() - input.days + 1);
+
+      const salesData = await ctx.db.sale.findMany({
+        where: {
+          saleDate: {
+            gte: startDate,
+            lte: new Date(
+              today.getFullYear(),
+              today.getMonth(),
+              today.getDate(),
+              23,
+              59,
+              59,
+              999
+            ), // Ensure we get all of today
+          },
+        },
+        include: {
+          menu: { select: { price: true } },
+        },
+        orderBy: {
+          saleDate: "asc",
+        },
+      });
+
+      // Aggregate sales by date
+      const dailyRevenueMap = new Map<string, number>();
+
+      for (const sale of salesData) {
+        const dateStr = sale.saleDate.toISOString().split("T")[0]!; // YYYY-MM-DD
+        const currentRevenue = dailyRevenueMap.get(dateStr) ?? 0;
+        const saleRevenue = sale.numSold * Number(sale.menu.price);
+        dailyRevenueMap.set(dateStr, currentRevenue + saleRevenue);
+      }
+
+      // Populate results array, ensuring all days in the range are present (with 0 revenue if no sales)
+      for (let i = 0; i < input.days; i++) {
+        const currentDate = new Date(startDate);
+        currentDate.setDate(startDate.getDate() + i);
+        const dateStr = currentDate.toISOString().split("T")[0]!; // YYYY-MM-DD
+        results.push({
+          date: dateStr,
+          revenue: dailyRevenueMap.get(dateStr) ?? 0,
+        });
+      }
+
+      return results;
+    }),
+
+  // Analytics: Get most popular dish based on sales
+  getMostPopularDish: adminProcedure.query(async ({ ctx }) => {
+    const salesWithDishes = await ctx.db.sale.findMany({
+      include: {
+        menu: {
+          include: {
+            menuDishes: {
+              include: {
+                dish: {
+                  select: { dishId: true, dishName: true },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const dishCounts = new Map<string, { name: string; count: number }>();
+
+    for (const sale of salesWithDishes) {
+      for (const menuDish of sale.menu.menuDishes) {
+        const dishId = menuDish.dish.dishId;
+        const dishName = menuDish.dish.dishName;
+        const current = dishCounts.get(dishId) ?? { name: dishName, count: 0 };
+        dishCounts.set(dishId, {
+          ...current,
+          count: current.count + sale.numSold,
+        });
+      }
+    }
+
+    let mostPopular = { name: "N/A", count: 0 };
+    if (dishCounts.size > 0) {
+      mostPopular = Array.from(dishCounts.values()).reduce((prev, current) =>
+        prev.count > current.count ? prev : current
+      );
+    }
+    return mostPopular;
+  }),
 });

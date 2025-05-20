@@ -92,33 +92,9 @@ export const authConfig = {
         }
       }
 
-      // After User record is ensured by PrismaAdapter (for new users) or fetched (for existing),
-      // ensure a corresponding Student record exists.
-      if (user.id) {
-        const student = await db.student.findUnique({
-          where: { userId: user.id },
-        });
-        if (!student) {
-          try {
-            await db.student.create({
-              data: {
-                userId: user.id,
-                // managingAdminId can be left null or set to a default if applicable
-              },
-            });
-            console.log(
-              `Automatically created Student record for User ID: ${user.id}`
-            );
-          } catch (dbError) {
-            console.error(
-              `Failed to create Student record for User ID: ${user.id}`,
-              dbError
-            );
-            // Decide if this should prevent sign-in. For now, we'll allow sign-in to continue.
-            // throw new Error("Failed to set up student profile.");
-          }
-        }
-      }
+      // Removed student creation block from here to prevent timing issues
+      // The Student record will be created lazily when needed by other parts of the application.
+
       return true; // Continue with the sign-in process
     },
     session: async ({ session, user }) => {

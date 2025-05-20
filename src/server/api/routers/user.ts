@@ -384,4 +384,79 @@ export const userRouter = createTRPCRouter({
         where: { id: input.userId },
       });
     }),
+
+  // Analytics: Get monthly user signups
+  getMonthlySignups: adminProcedure
+    .input(
+      z.object({
+        months: z.number().int().positive().default(12),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const results: { month: string; count: number }[] = [];
+      const today = new Date();
+
+      for (let i = input.months - 1; i >= 0; i--) {
+        const targetMonth = new Date(
+          today.getFullYear(),
+          today.getMonth() - i,
+          1
+        );
+        const monthStart = new Date(
+          targetMonth.getFullYear(),
+          targetMonth.getMonth(),
+          1
+        );
+        monthStart.setHours(0, 0, 0, 0);
+        const monthEnd = new Date(
+          targetMonth.getFullYear(),
+          targetMonth.getMonth() + 1,
+          0
+        );
+        monthEnd.setHours(23, 59, 59, 999);
+
+        const count = await ctx.db.user.count({
+          where: {
+            emailVerified: {
+              gte: monthStart,
+              lte: monthEnd,
+            },
+          },
+        });
+
+        results.push({
+          month: `${targetMonth.getFullYear()}-${(targetMonth.getMonth() + 1)
+            .toString()
+            .padStart(2, "0")}`,
+          count,
+        });
+      }
+      return results;
+    }),
+
+  // Analytics: Get basic feature usage stats
+  getFeatureUsageStats: adminProcedure.query(async ({ ctx }) => {
+    const appointmentCount = await ctx.db.appointment.count();
+    const cafeteriaSaleCount = await ctx.db.sale.count(); // Counts total sale entries (days with sales)
+    // For a more granular count of individual sale *transactions*, if QRCodes are used for each, you might count those:
+    // const cafeteriaTransactions = await ctx.db.qRCode.count({ where: { paysForDate: { not: null } } });
+
+    // Count unique users who have at least one favorite route
+    const favoriteRouteUsers = await ctx.db.userFavoriteRoute.groupBy({
+      by: ["userId"],
+      where: { isFavorite: true }, // Ensure we only count currently favorited routes
+      _count: {
+        userId: true,
+      },
+    });
+    // The result of groupBy is an array of objects like [{ userId: 'someId', _count: { userId: X } }]
+    // So, the number of unique users is simply the length of this array.
+    const ringTrackingUsersCount = favoriteRouteUsers.length;
+
+    return {
+      appointments: appointmentCount,
+      cafeteriaSales: cafeteriaSaleCount, // Or cafeteriaTransactions if preferred
+      ringTrackingFavorites: ringTrackingUsersCount,
+    };
+  }),
 });

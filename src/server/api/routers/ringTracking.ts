@@ -551,4 +551,58 @@ export const ringTrackingRouter = createTRPCRouter({
         throw error;
       }
     }),
+
+  // Analytics: Get count of buses assigned per route
+  getBusesAssignedPerRoute: adminProcedure.query(async ({ ctx }) => {
+    const routesWithBusCounts = await ctx.db.route.findMany({
+      include: {
+        _count: {
+          select: { drivenByBuses: true },
+        },
+      },
+      orderBy: {
+        routeName: "asc",
+      },
+    });
+
+    return routesWithBusCounts.map((route) => ({
+      routeName: route.routeName,
+      busCount: route._count.drivenByBuses,
+    }));
+  }),
+
+  // Analytics: Get most favorited route
+  getMostFavoritedRoute: adminProcedure.query(async ({ ctx }) => {
+    const favoriteCounts = await ctx.db.userFavoriteRoute.groupBy({
+      by: ["routeId"],
+      where: { isFavorite: true }, // Only count routes currently marked as favorite
+      _count: {
+        routeId: true,
+      },
+      orderBy: {
+        _count: {
+          routeId: "desc",
+        },
+      },
+      take: 1,
+    });
+
+    if (favoriteCounts.length === 0 || !favoriteCounts[0]) {
+      return { routeName: "N/A", count: 0 };
+    }
+
+    // At this point, favoriteCounts[0] is guaranteed to exist.
+    const topFavoriteEntry = favoriteCounts[0];
+    const topRouteId = topFavoriteEntry.routeId;
+
+    const topRoute = await ctx.db.route.findUnique({
+      where: { routeId: topRouteId },
+      select: { routeName: true },
+    });
+
+    return {
+      routeName: topRoute?.routeName ?? "Unknown Route",
+      count: topFavoriteEntry._count.routeId,
+    };
+  }),
 });
