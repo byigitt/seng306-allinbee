@@ -85,66 +85,78 @@ export const authConfig = {
     }),
   ],
   callbacks: {
-    async jwt({ token, user, account, profile }) {
-      console.log("[jwt Callback] Triggered.");
+    async jwt({ token, user, account, profile, trigger }) {
+      console.log("[jwt Callback] Triggered. Trigger:", trigger);
       console.log(
         "[jwt Callback] Initial token:",
         JSON.stringify(token, null, 2)
       );
       console.log(
-        "[jwt Callback] User object (available on sign-in):",
+        "[jwt Callback] User object (available on sign-in/update):",
         JSON.stringify(user, null, 2)
       );
-      console.log(
-        "[jwt Callback] Account object (available on sign-in):",
-        JSON.stringify(account, null, 2)
-      );
-      console.log(
-        "[jwt Callback] Profile object (available on OAuth sign-in):",
-        JSON.stringify(profile, null, 2)
-      );
 
-      // This callback is called when a JWT is created (i.e., on sign in)
-      // and updated (whenever a session is accessed in the client).
+      // If it's an initial sign-in or an update event where 'user' is passed,
+      // ensure basic details are seeded into the token.
       if (user) {
-        // user object is available on initial sign-in
         token.id = user.id;
-        token.email = user.email; // Ensure email is included
+        token.email = user.email; // Email from user object
         token.fName = user.fName;
         token.lName = user.lName;
-        // Fetch isAdmin and isStaff status from the database
+      }
+
+      // Always try to refresh user details and roles from DB if token.id exists.
+      // This ensures roles are up-to-date even if granted after initial login or changed mid-session.
+      if (token.id) {
         try {
           const dbUser = await db.user.findUnique({
-            where: { id: user.id },
+            where: { id: token.id as string },
             include: { admin: true, staff: true },
           });
           if (dbUser) {
             token.isAdmin = !!dbUser.admin;
             token.isStaff = !!dbUser.staff;
-            // If fName or lName might be missing from the initial 'user' object from 'authorize'
-            // but are guaranteed in the DB, you can re-assign them here too.
-            // token.fName = dbUser.fName;
-            // token.lName = dbUser.lName;
+            // Keep token fName, lName, email fresh from DB as well
+            token.fName = dbUser.fName;
+            token.lName = dbUser.lName;
+            token.email = dbUser.email; // Update email from DB
           } else {
-            console.log(
-              `[jwt Callback] User not found in DB for id: ${user.id}`
+            // User associated with token.id not found in DB (e.g., deleted).
+            // This effectively invalidates the session from a role perspective.
+            console.warn(
+              `[jwt Callback] User with id ${token.id} not found in DB during refresh.`
             );
             token.isAdmin = false;
             token.isStaff = false;
+            // Potentially clear other user-specific fields from token or handle as error
+            // For now, we'll let the session callback handle what to put in the session.user
           }
         } catch (error) {
-          console.error("[jwt Callback] Error fetching user roles:", error);
-          token.isAdmin = false;
-          token.isStaff = false;
+          console.error(
+            "[jwt Callback] Error fetching user roles/details during refresh:",
+            error
+          );
+          // Fallback: keep existing token roles or default to false to be safe if DB call fails
+          token.isAdmin = token.isAdmin || false;
+          token.isStaff = token.isStaff || false;
         }
+      } else {
+        // If token.id is somehow not set (should not happen for a valid session after initial login),
+        // default roles to false. This indicates an issue with the token's state.
+        console.warn(
+          "[jwt Callback] token.id is missing, cannot refresh roles."
+        );
+        token.isAdmin = false;
+        token.isStaff = false;
       }
-      // Ensure essential fields always exist on the token, even if null/false
-      token.id = token.id || null;
+
+      // Ensure essential fields always exist on the token to maintain a consistent structure.
+      token.id = token.id || null; // Can be null if something went wrong
       token.email = token.email || null;
       token.fName = token.fName || null;
       token.lName = token.lName || null;
-      token.isAdmin = token.isAdmin || false;
-      token.isStaff = token.isStaff || false;
+      token.isAdmin = token.isAdmin || false; // Default to false if undefined
+      token.isStaff = token.isStaff || false; // Default to false if undefined
 
       console.log(
         "[jwt Callback] Returning token:",
