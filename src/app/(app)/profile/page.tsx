@@ -175,7 +175,7 @@ export default function ProfilePage() {
 				</Button>
 			</div>
 
-			<Card className="mx-auto w-full max-w-2xl">
+			<Card className="mx-auto w-full max-w-2xl mb-[80px]">
 				<CardHeader className="relative flex flex-col items-center space-y-2 text-center sm:flex-row sm:space-y-0 sm:text-left">
 					<Avatar className="h-24 w-24 ring-2 ring-primary ring-offset-2 ring-offset-background">
 						<AvatarImage
