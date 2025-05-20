@@ -3,6 +3,7 @@ import {
   createTRPCRouter,
   protectedProcedure,
   adminProcedure,
+  staffProcedure,
   // staffProcedure, // Not currently used, can be re-added if needed
 } from "@/server/api/trpc";
 import {
@@ -481,7 +482,7 @@ export const appointmentsRouter = createTRPCRouter({
     }),
 
   // --- Book Management (Admin only) ---
-  listBooks: adminProcedure
+  listBooks: staffProcedure
     .input(
       z.object({
         searchTerm: z.string().optional(),
@@ -511,7 +512,7 @@ export const appointmentsRouter = createTRPCRouter({
       return { books, totalCount };
     }),
 
-  createBook: adminProcedure
+  createBook: staffProcedure
     .input(bookManagementItemSchema)
     .mutation(async ({ ctx, input }) => {
       const existingBook = await ctx.db.book.findUnique({
@@ -531,7 +532,7 @@ export const appointmentsRouter = createTRPCRouter({
       });
     }),
 
-  updateBook: adminProcedure
+  updateBook: staffProcedure
     .input(bookManagementItemSchema) // ISBN is part of the schema and used as ID in where clause
     .mutation(async ({ ctx, input }) => {
       const bookToUpdate = await ctx.db.book.findUnique({
@@ -566,7 +567,7 @@ export const appointmentsRouter = createTRPCRouter({
       });
     }),
 
-  deleteBook: adminProcedure
+  deleteBook: staffProcedure
     .input(z.object({ isbn: z.string().min(1, "ISBN is required") }))
     .mutation(async ({ ctx, input }) => {
       try {
